@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { Problem, Evidence, ProblemImpact, ProblemStatus } from '../types';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 
 interface ProblemDetailViewProps {
   problemId: string;
@@ -54,8 +55,12 @@ export function ProblemDetailView({
   const [evidenceSearchTerm, setEvidenceSearchTerm] = useState('');
   const [linkingSubmitting, setLinkingSubmitting] = useState(false);
 
-  // Delete state
+  // Delete modal state
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Unlink evidence state
+  const [evidenceToUnlink, setEvidenceToUnlink] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProblem();
@@ -128,9 +133,6 @@ export function ProblemDetailView({
 
   const handleDeleteProblem = async () => {
     if (!problem) return;
-    if (!window.confirm(`Tem certeza que deseja excluir o problema "${problem.title}"?`)) {
-      return;
-    }
     setIsDeleting(true);
     try {
       const res = await fetch(`/api/problems/${problem.id}`, {
@@ -138,6 +140,7 @@ export function ProblemDetailView({
         headers: { 'x-workspace-id': workspaceId },
       });
       if (res.ok) {
+        setIsConfirmingDelete(false);
         onProblemDeleted();
       } else {
         alert('Erro ao excluir problema.');
@@ -149,17 +152,15 @@ export function ProblemDetailView({
     }
   };
 
-  const handleUnlinkEvidence = async (evidenceId: string) => {
-    if (!problem) return;
-    if (!window.confirm('Deseja desvincular esta evidência comprobatória do problema?')) {
-      return;
-    }
+  const handleUnlinkEvidence = async () => {
+    if (!problem || !evidenceToUnlink) return;
     try {
-      const res = await fetch(`/api/problems/${problem.id}/evidences/${evidenceId}`, {
+      const res = await fetch(`/api/problems/${problem.id}/evidences/${evidenceToUnlink}`, {
         method: 'DELETE',
         headers: { 'x-workspace-id': workspaceId },
       });
       if (res.ok) {
+        setEvidenceToUnlink(null);
         fetchProblem();
       }
     } catch (err) {
@@ -313,12 +314,12 @@ export function ProblemDetailView({
           </button>
 
           <button
-            onClick={handleDeleteProblem}
+            onClick={() => setIsConfirmingDelete(true)}
             disabled={isDeleting}
-            className="px-3.5 py-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/60 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
+            className="px-3.5 py-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/60 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>{isDeleting ? 'Excluindo...' : 'Excluir'}</span>
+            <span>Excluir</span>
           </button>
         </div>
       </div>
@@ -565,8 +566,8 @@ export function ProblemDetailView({
                   </div>
 
                   <button
-                    onClick={() => handleUnlinkEvidence(ev.id)}
-                    className="text-neutral-500 hover:text-red-400 text-xs flex items-center gap-1 transition-colors p-1"
+                    onClick={() => setEvidenceToUnlink(ev.id)}
+                    className="text-neutral-500 hover:text-red-400 text-xs flex items-center gap-1 transition-colors p-1 cursor-pointer"
                     title="Desvincular do problema"
                   >
                     <Unlink className="w-3.5 h-3.5" />
@@ -629,6 +630,27 @@ export function ProblemDetailView({
           </div>
         )}
       </div>
+
+      {/* Delete Problem Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={isConfirmingDelete}
+        title="Excluir Problema do Workspace"
+        description={`Tem certeza que deseja excluir o problema "${problem.title}"? Esta ação removerá o registro e os seus vínculos de rastreabilidade.`}
+        confirmText="Excluir Problema"
+        loading={isDeleting}
+        onConfirm={handleDeleteProblem}
+        onClose={() => setIsConfirmingDelete(false)}
+      />
+
+      {/* Unlink Evidence Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(evidenceToUnlink)}
+        title="Desvincular Evidência Comprobatória"
+        description="Deseja desvincular esta citação do problema? A evidência continuará salva no repositório de pesquisas."
+        confirmText="Desvincular"
+        onConfirm={handleUnlinkEvidence}
+        onClose={() => setEvidenceToUnlink(null)}
+      />
     </div>
   );
 }

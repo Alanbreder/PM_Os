@@ -74,6 +74,36 @@ export interface Opportunity {
   updated_at: string;
 }
 
+export type HypothesisStatus = 'draft' | 'testing' | 'validated' | 'invalidated';
+
+export interface Hypothesis {
+  id: string;
+  workspace_id: string;
+  opportunity_id?: string | null;
+  statement: string;
+  metric_target?: string | null;
+  confidence_score?: number | null;
+  status: HypothesisStatus;
+  created_at: string;
+  updated_at?: string;
+  opportunity_title?: string;
+}
+
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+export interface ToastMessage {
+  id: string;
+  type: ToastType;
+  title: string;
+  message?: string;
+}
+
+export interface BreadcrumbItem {
+  label: string;
+  onClick?: () => void;
+  active?: boolean;
+}
+
 // AI Suggestions (Human-in-the-loop)
 export interface SuggestedEvidenceItem {
   id: string; // client temporary ID

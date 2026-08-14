@@ -20,6 +20,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { Opportunity, Problem, OpportunityStatus } from '../types';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 
 interface OpportunityDetailViewProps {
   opportunityId: string;
@@ -77,9 +78,11 @@ export function OpportunityDetailView({
   const [linkingSubmitting, setLinkingSubmitting] = useState(false);
 
   // Unlink problem state
-  const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
+  const [problemToUnlink, setProblemToUnlink] = useState<string | null>(null);
+  const [unlinking, setUnlinking] = useState(false);
 
   // Delete opportunity state
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Expand problem evidences map
@@ -193,28 +196,26 @@ export function OpportunityDetailView({
     }
   };
 
-  const handleUnlinkProblem = async (problemId: string) => {
-    if (!confirm('Deseja realmente remover este problema da oportunidade?')) return;
-    setUnlinkingId(problemId);
+  const handleUnlinkProblem = async () => {
+    if (!problemToUnlink) return;
+    setUnlinking(true);
     try {
-      const res = await fetch(`/api/opportunities/${opportunityId}/problems/${problemId}`, {
+      const res = await fetch(`/api/opportunities/${opportunityId}/problems/${problemToUnlink}`, {
         method: 'DELETE',
         headers: { 'x-workspace-id': workspaceId },
       });
 
       if (!res.ok) throw new Error('Erro ao desvincular problema');
+      setProblemToUnlink(null);
       await fetchOpportunity();
     } catch (err: any) {
       alert(err.message || 'Falha ao desvincular problema');
     } finally {
-      setUnlinkingId(null);
+      setUnlinking(false);
     }
   };
 
   const handleDeleteOpportunity = async () => {
-    if (!confirm('Tem certeza que deseja excluir esta oportunidade? Os problemas e evidências continuarão preservados.')) {
-      return;
-    }
     setIsDeleting(true);
     try {
       const res = await fetch(`/api/opportunities/${opportunityId}`, {
@@ -223,6 +224,7 @@ export function OpportunityDetailView({
       });
 
       if (!res.ok) throw new Error('Erro ao excluir oportunidade');
+      setIsConfirmingDelete(false);
       onOpportunityDeleted();
     } catch (err: any) {
       alert(err.message || 'Falha ao excluir oportunidade');
@@ -283,7 +285,7 @@ export function OpportunityDetailView({
           </button>
 
           <button
-            onClick={handleDeleteOpportunity}
+            onClick={() => setIsConfirmingDelete(true)}
             disabled={isDeleting}
             className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
@@ -433,8 +435,8 @@ export function OpportunityDetailView({
                       </button>
 
                       <button
-                        onClick={() => handleUnlinkProblem(problem.id)}
-                        disabled={unlinkingId === problem.id}
+                        onClick={() => setProblemToUnlink(problem.id)}
+                        disabled={unlinking}
                         title="Desvincular problema desta oportunidade"
                         className="text-neutral-500 hover:text-rose-400 p-1.5 rounded hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-50"
                       >
@@ -613,6 +615,28 @@ export function OpportunityDetailView({
           </div>
         </div>
       )}
+
+      {/* Confirm Delete Opportunity Dialog */}
+      <ConfirmDialog
+        isOpen={isConfirmingDelete}
+        title="Excluir Oportunidade do Workspace"
+        description="Tem certeza que deseja excluir esta oportunidade? Os problemas e evidências associadas continuarão preservados no repositório."
+        confirmText="Excluir Oportunidade"
+        loading={isDeleting}
+        onConfirm={handleDeleteOpportunity}
+        onClose={() => setIsConfirmingDelete(false)}
+      />
+
+      {/* Confirm Unlink Problem Dialog */}
+      <ConfirmDialog
+        isOpen={Boolean(problemToUnlink)}
+        title="Desvincular Problema da Oportunidade"
+        description="Deseja remover este problema da área de oportunidade? O problema continuará disponível no Backlog de Problemas."
+        confirmText="Desvincular"
+        loading={unlinking}
+        onConfirm={handleUnlinkProblem}
+        onClose={() => setProblemToUnlink(null)}
+      />
     </div>
   );
 }
