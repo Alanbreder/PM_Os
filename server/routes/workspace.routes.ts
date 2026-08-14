@@ -16,7 +16,6 @@ workspaceRouter.get(
     try {
       let workspaces = await dbStore.listWorkspacesForUser(user.id);
       
-      // If user has no workspaces and list is empty (e.g. in dev mode), return all workspaces
       if (workspaces.length === 0) {
         workspaces = await dbStore.listAllWorkspaces();
       }
@@ -24,7 +23,11 @@ workspaceRouter.get(
       res.json({ workspaces });
     } catch (error: any) {
       console.error('Error listing workspaces:', error);
-      res.status(500).json({ error: 'Erro ao listar workspaces' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro ao listar workspaces.',
+      });
     }
   }
 );
@@ -43,12 +46,16 @@ workspaceRouter.post(
       res.status(201).json({ workspace: ws });
     } catch (error: any) {
       console.error('Error creating workspace:', error);
-      res.status(500).json({ error: 'Erro ao criar workspace' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro ao criar workspace.',
+      });
     }
   }
 );
 
-// Get specific Workspace (with strict membership validation)
+// Get specific Workspace
 workspaceRouter.get(
   '/workspaces/:id',
   authenticate,
@@ -60,13 +67,21 @@ workspaceRouter.get(
     try {
       const ws = await dbStore.getWorkspaceById(workspaceId);
       if (!ws) {
-        res.status(404).json({ error: 'Workspace não encontrado' });
+        res.status(404).json({
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Workspace não encontrado.',
+        });
         return;
       }
       res.json({ workspace: ws, userRole: req.workspaceRole });
     } catch (error: any) {
       console.error('Error fetching workspace:', error);
-      res.status(500).json({ error: 'Erro ao buscar workspace' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro ao buscar workspace.',
+      });
     }
   }
 );
@@ -79,7 +94,11 @@ workspaceRouter.post(
   requireWorkspace,
   async (req: Request, res: Response) => {
     if (req.workspaceRole !== 'owner' && req.workspaceRole !== 'admin') {
-      res.status(403).json({ error: 'Apenas proprietários e administradores podem convidar membros' });
+      res.status(403).json({
+        success: false,
+        error: 'FORBIDDEN',
+        message: 'Apenas proprietários e administradores podem convidar membros.',
+      });
       return;
     }
 
@@ -91,7 +110,11 @@ workspaceRouter.post(
       res.status(201).json({ member });
     } catch (error: any) {
       console.error('Error adding member:', error);
-      res.status(500).json({ error: 'Erro ao adicionar membro' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro ao adicionar membro.',
+      });
     }
   }
 );

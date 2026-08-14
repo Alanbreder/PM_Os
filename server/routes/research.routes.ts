@@ -1,13 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { authenticate, requireWorkspace } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
+import { aiRateLimiter } from '../middleware/rate_limit.js';
 import { createResearchSchema, uuidParamSchema, approveAnalysisSchema } from '../schemas/index.js';
 import { dbStore } from '../db/store.js';
 import { analyzeResearchContent } from '../services/gemini.service.js';
+import { applyPagination } from '../utils/pagination.js';
 
 export const researchRouter = Router();
 
-// List researches for verified workspace
+// List researches for verified workspace with pagination
 researchRouter.get(
   '/researches',
   authenticate,
@@ -16,16 +18,25 @@ researchRouter.get(
     const workspaceId = req.workspaceId!;
 
     try {
-      const researches = await dbStore.listResearches(workspaceId);
-      res.json({ researches });
+      const allResearches = await dbStore.listResearches(workspaceId);
+      const { data, pagination } = applyPagination(allResearches, req.query.page, req.query.limit);
+
+      res.json({
+        researches: data,
+        pagination,
+      });
     } catch (error: any) {
       console.error('Error listing researches:', error);
-      res.status(500).json({ error: 'Erro interno ao listar pesquisas' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro interno ao listar pesquisas.',
+      });
     }
   }
 );
 
-// Get research by ID with associated evidences (Strict IDOR guard: filters by both research ID and validated workspace ID)
+// Get research by ID with associated evidences
 researchRouter.get(
   '/researches/:id',
   authenticate,
@@ -38,14 +49,22 @@ researchRouter.get(
     try {
       const research = await dbStore.getResearchById(workspaceId, researchId);
       if (!research) {
-        res.status(404).json({ error: 'Pesquisa não encontrada neste workspace' });
+        res.status(404).json({
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Pesquisa não encontrada neste workspace.',
+        });
         return;
       }
       const evidences = await dbStore.listEvidences(workspaceId, researchId);
       res.json({ research: { ...research, evidences } });
     } catch (error: any) {
       console.error('Error fetching research:', error);
-      res.status(500).json({ error: 'Erro ao buscar pesquisa' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro ao buscar pesquisa.',
+      });
     }
   }
 );
@@ -73,30 +92,37 @@ researchRouter.post(
       res.status(201).json({ research });
     } catch (error: any) {
       console.error('Error creating research:', error);
-      res.status(500).json({ error: 'Erro ao criar pesquisa' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro ao criar pesquisa.',
+      });
     }
   }
 );
 
-// Analyze Research with Gemini AI (Human-in-the-loop: returns suggestions, does NOT write directly to DB)
+// Analyze Research with Gemini AI (Human-in-the-loop + Rate limited + Input audited)
 researchRouter.post(
   '/researches/:id/analyze',
   authenticate,
   validate({ params: uuidParamSchema }),
   requireWorkspace,
+  aiRateLimiter,
   async (req: Request, res: Response) => {
     const workspaceId = req.workspaceId!;
     const researchId = req.params.id;
 
     try {
-      // 1. Fetch research ensuring strict workspace boundary
       const research = await dbStore.getResearchById(workspaceId, researchId);
       if (!research) {
-        res.status(404).json({ error: 'Pesquisa não encontrada neste workspace' });
+        res.status(404).json({
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Pesquisa não encontrada neste workspace.',
+        });
         return;
       }
 
-      // 2. Call Gemini Flash with structured schema & system instructions
       const analysis = await analyzeResearchContent(research.raw_content, research.title);
 
       res.json({
@@ -108,13 +134,15 @@ researchRouter.post(
     } catch (error: any) {
       console.error('Error analyzing research with AI:', error);
       res.status(500).json({
-        error: error.message || 'Erro ao processar a pesquisa com a IA do Gemini',
+        success: false,
+        error: 'AI_ANALYSIS_ERROR',
+        message: error.message || 'Erro ao processar a pesquisa com a IA do Gemini.',
       });
     }
   }
 );
 
-// Approve and persist AI suggestions into PostgreSQL Cloud SQL (Atomic & strictly validated)
+// Approve and persist AI suggestions into PostgreSQL Cloud SQL
 researchRouter.post(
   '/researches/:id/approve-analysis',
   authenticate,
@@ -143,7 +171,9 @@ researchRouter.post(
     } catch (error: any) {
       console.error('Error approving analysis:', error);
       res.status(500).json({
-        error: error.message || 'Erro ao salvar os registros aprovados no banco',
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: error.message || 'Erro ao salvar os registros aprovados no banco.',
       });
     }
   }

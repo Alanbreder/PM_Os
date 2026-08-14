@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Plus, Search, Filter, AlertCircle, Save, Check } from 'lucide-react';
+import { Sparkles, Plus, Search, Filter, AlertCircle, Save, Lightbulb } from 'lucide-react';
 import { Hypothesis, Opportunity, HypothesisStatus } from '../types';
 import { PageHeader } from './ui/PageHeader';
 import { Badge } from './ui/Badge';
@@ -29,10 +29,10 @@ export function HypothesesListView({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // New Hypothesis Modal / Form State
+  // New Hypothesis Form State
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [statement, setStatement] = useState('');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
+  const [statement, setStatement] = useState('');
   const [metricTarget, setMetricTarget] = useState('');
   const [confidenceScore, setConfidenceScore] = useState<number>(3);
   const [status, setStatus] = useState<HypothesisStatus>('draft');
@@ -62,8 +62,19 @@ export function HypothesesListView({
 
   const handleCreateHypothesis = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!statement.trim() || statement.trim().length < 5) {
-      setFormError('A declaração da hipótese deve ter pelo menos 5 caracteres.');
+
+    if (!selectedOpportunityId) {
+      setFormError('Selecione obrigatoriamente uma Oportunidade para vincular a hipótese.');
+      return;
+    }
+
+    if (!statement.trim() || statement.trim().length < 10) {
+      setFormError('A declaração da hipótese deve ter pelo menos 10 caracteres.');
+      return;
+    }
+
+    if (!metricTarget.trim() || metricTarget.trim().length < 3) {
+      setFormError('A métrica de sucesso (alvo) é obrigatória (mínimo 3 caracteres).');
       return;
     }
 
@@ -72,9 +83,9 @@ export function HypothesesListView({
 
     try {
       const payload = {
+        opportunity_id: selectedOpportunityId,
         statement: statement.trim(),
-        opportunity_id: selectedOpportunityId || null,
-        metric_target: metricTarget.trim() || null,
+        metric_target: metricTarget.trim(),
         confidence_score: confidenceScore,
         status,
       };
@@ -111,6 +122,8 @@ export function HypothesesListView({
     }
   };
 
+  const selectedOpp = opportunities.find((o) => o.id === selectedOpportunityId);
+
   const filteredHypotheses = hypotheses.filter((h) => {
     const matchesSearch =
       h.statement.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -124,8 +137,8 @@ export function HypothesesListView({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Hipóteses e Experimentos"
-        description="Apostas de soluções e proposições testáveis formuladas para responder às oportunidades identificadas."
+        title="Hipóteses de Solução"
+        description="Apostas testáveis de solução vinculadas a Oportunidades para direcionar a validação do produto."
         badge={
           <Badge variant="indigo" icon={<Sparkles className="w-3.5 h-3.5" />}>
             Hypothesis Engine
@@ -138,9 +151,9 @@ export function HypothesesListView({
         }
       />
 
-      {/* Inline Form Modal for New Hypothesis */}
+      {/* Form Card for Creating a New Hypothesis */}
       {isFormOpen && (
-        <Card className="border-indigo-500/30 bg-neutral-900/90 space-y-4">
+        <Card className="border-indigo-500/30 bg-neutral-900/90 space-y-4 shadow-xl">
           <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
             <h3 className="text-xs font-bold text-white flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-indigo-400" />
@@ -148,103 +161,153 @@ export function HypothesesListView({
             </h3>
             <button
               onClick={() => setIsFormOpen(false)}
-              className="text-xs text-neutral-400 hover:text-white"
+              className="text-xs text-neutral-400 hover:text-white cursor-pointer"
             >
               Cancelar
             </button>
           </div>
 
           {formError && (
-            <div className="bg-rose-500/10 border border-rose-500/20 rounded p-2.5 text-rose-400 text-xs flex items-center gap-2">
+            <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-3 text-rose-400 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{formError}</span>
             </div>
           )}
 
           <form onSubmit={handleCreateHypothesis} className="space-y-4">
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-neutral-300">
-                Declaração da Hipótese (Nós acreditamos que...) <span className="text-amber-400">*</span>
+            {/* Step 1: Mandatory Opportunity Selection */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+                <Lightbulb className="w-3.5 h-3.5" />
+                <span>1. Selecionar Oportunidade Relacionada *</span>
               </label>
-              <textarea
-                rows={3}
-                value={statement}
-                onChange={(e) => setStatement(e.target.value)}
-                placeholder="Ex: Se simplificarmos o formulário de cadastro para 3 etapas, reduziremos a taxa de abandono na Onboarding..."
-                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500/50"
-              />
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-neutral-300">
-                  Oportunidade Relacionada
-                </label>
+              {opportunities.length === 0 ? (
+                <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-3.5 text-xs text-neutral-400 space-y-2">
+                  <p>
+                    Nenhuma Oportunidade foi encontrada neste workspace. É necessário cadastrar pelo menos uma Oportunidade no Opportunity Backlog antes de formular uma hipótese.
+                  </p>
+                </div>
+              ) : (
                 <select
                   value={selectedOpportunityId}
                   onChange={(e) => setSelectedOpportunityId(e.target.value)}
-                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500/50"
+                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500/50 cursor-pointer"
                 >
-                  <option value="">Nenhuma (Oportunidade Geral)</option>
+                  <option value="" disabled>
+                    -- Selecione uma Oportunidade existente (Obrigatório) --
+                  </option>
                   {opportunities.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.title}
                     </option>
                   ))}
                 </select>
+              )}
+            </div>
+
+            {/* Context Box of Selected Opportunity */}
+            {selectedOpp && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3.5 space-y-1.5 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 font-mono">
+                    Contexto da Oportunidade Selecionada
+                  </span>
+                  <Badge
+                    variant={
+                      selectedOpp.status === 'active'
+                        ? 'amber'
+                        : selectedOpp.status === 'draft'
+                        ? 'neutral'
+                        : 'neutral'
+                    }
+                  >
+                    {selectedOpp.status === 'active'
+                      ? 'Ativa'
+                      : selectedOpp.status === 'draft'
+                      ? 'Rascunho'
+                      : 'Arquivada'}
+                  </Badge>
+                </div>
+                <h4 className="text-xs font-bold text-white leading-snug">{selectedOpp.title}</h4>
+                <p className="text-xs text-neutral-300 leading-relaxed">{selectedOpp.description}</p>
+              </div>
+            )}
+
+            {/* Step 2: Hypothesis Details */}
+            <div className="space-y-4 pt-2 border-t border-neutral-800">
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-neutral-300">
+                  Declaração da Hipótese (Nós acreditamos que...) <span className="text-amber-400">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={statement}
+                  onChange={(e) => setStatement(e.target.value)}
+                  placeholder="Ex: Se simplificarmos o fluxo de checkout para 2 passos, reduziremos a taxa de abandono do carrinho..."
+                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500/50"
+                />
               </div>
 
               <div className="space-y-1">
                 <label className="block text-xs font-medium text-neutral-300">
-                  Métrica / Alvo de Sucesso (Target Metric)
+                  Métrica de Sucesso / Alvo de Validação <span className="text-amber-400">*</span>
                 </label>
                 <input
                   type="text"
                   value={metricTarget}
                   onChange={(e) => setMetricTarget(e.target.value)}
-                  placeholder="Ex: Aumentar a conversão de cadastro em +15%"
+                  placeholder="Ex: Aumentar a taxa de conversão do checkout de 2.5% para 4.0%"
                   className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-indigo-500/50"
                 />
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-neutral-300">
+                    Pontuação de Confiança (1 a 5)
+                  </label>
+                  <select
+                    value={confidenceScore}
+                    onChange={(e) => setConfidenceScore(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                  >
+                    <option value={1}>1 - Baixa confiança (Aposta arriscada)</option>
+                    <option value={2}>2 - Confiança moderada-baixa</option>
+                    <option value={3}>3 - Confiança média (Padrão)</option>
+                    <option value={4}>4 - Alta confiança (Baseada em forte evidência)</option>
+                    <option value={5}>5 - Confiança altíssima (Pré-validada)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-neutral-300">
+                    Status da Hipótese
+                  </label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as HypothesisStatus)}
+                    className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                  >
+                    <option value="draft">Rascunho (Em Formulação)</option>
+                    <option value="testing">Em Validação (Em Teste)</option>
+                    <option value="validated">Validada (Sucesso Comprovado)</option>
+                    <option value="invalidated">Invalidada (Refutada)</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-neutral-300">
-                  Status da Hipótese
-                </label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as HypothesisStatus)}
-                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500/50"
-                >
-                  <option value="draft">Rascunho (Em Formulação)</option>
-                  <option value="testing">Em Teste (Experimento Ativo)</option>
-                  <option value="validated">Validada (Sucesso comprovado)</option>
-                  <option value="invalidated">Invalidada (Refutada)</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-neutral-300">
-                  Pontuação de Confiança (1 a 5)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={5}
-                  value={confidenceScore}
-                  onChange={(e) => setConfidenceScore(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500/50"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-3 border-t border-neutral-800">
               <Button type="button" variant="ghost" onClick={() => setIsFormOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" loading={submitting} icon={<Save className="w-3.5 h-3.5" />}>
+              <Button
+                type="submit"
+                loading={submitting}
+                disabled={!selectedOpportunityId || !statement.trim() || !metricTarget.trim()}
+                icon={<Save className="w-3.5 h-3.5" />}
+              >
                 Salvar Hipótese
               </Button>
             </div>
@@ -275,7 +338,7 @@ export function HypothesesListView({
           >
             <option value="all">Todas ({hypotheses.length})</option>
             <option value="draft">Rascunho</option>
-            <option value="testing">Em Teste</option>
+            <option value="testing">Em Validação</option>
             <option value="validated">Validada</option>
             <option value="invalidated">Invalidada</option>
           </select>
@@ -291,7 +354,7 @@ export function HypothesesListView({
         <EmptyState
           icon={<Sparkles className="w-6 h-6" />}
           title="Nenhuma hipótese cadastrada"
-          description="Formule hipóteses testáveis a partir das oportunidades de produto para direcionar os experimentos do time."
+          description="Formule hipóteses testáveis vinculadas a Oportunidades para direcionar a validação do produto."
           action={{
             label: 'Formular Primeira Hipótese',
             onClick: () => setIsFormOpen(true),
@@ -301,7 +364,7 @@ export function HypothesesListView({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredHypotheses.map((h) => (
             <Card key={h.id} className="space-y-3 border-neutral-800 flex flex-col justify-between">
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <Badge
                     variant={
@@ -317,7 +380,7 @@ export function HypothesesListView({
                     {h.status === 'draft'
                       ? 'Rascunho'
                       : h.status === 'testing'
-                      ? 'Em Teste'
+                      ? 'Em Validação'
                       : h.status === 'validated'
                       ? 'Validada'
                       : 'Invalidada'}
@@ -333,20 +396,21 @@ export function HypothesesListView({
                 <p className="text-xs text-white font-medium leading-relaxed">{h.statement}</p>
 
                 {h.metric_target && (
-                  <div className="text-[11px] text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 p-2 rounded">
-                    <strong>Métrica Alvo:</strong> {h.metric_target}
+                  <div className="text-[11px] text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 p-2.5 rounded-lg">
+                    <strong>Métrica de Sucesso:</strong> {h.metric_target}
                   </div>
                 )}
               </div>
 
               {h.opportunity_id && (
-                <div className="pt-2 border-t border-neutral-800 flex items-center justify-between text-[11px]">
+                <div className="pt-2.5 border-t border-neutral-800 flex items-center justify-between text-[11px]">
                   <span className="text-neutral-500">Oportunidade vinculada</span>
                   <button
                     onClick={() => onNavigateToOpportunity(h.opportunity_id!)}
-                    className="text-amber-400 hover:underline font-semibold cursor-pointer truncate max-w-[180px]"
+                    className="text-amber-400 hover:underline font-semibold cursor-pointer truncate max-w-[200px] flex items-center gap-1"
                   >
-                    {h.opportunity_title || 'Ver Oportunidade'}
+                    <Lightbulb className="w-3 h-3 shrink-0" />
+                    <span>{h.opportunity_title || 'Ver Oportunidade'}</span>
                   </button>
                 </div>
               )}
@@ -357,3 +421,4 @@ export function HypothesesListView({
     </div>
   );
 }
+

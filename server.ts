@@ -10,6 +10,7 @@ import { evidenceRouter } from './server/routes/evidence.routes.js';
 import { problemRouter } from './server/routes/problem.routes.js';
 import { opportunityRouter } from './server/routes/opportunity.routes.js';
 import { hypothesisRouter } from './server/routes/hypothesis.routes.js';
+import { askProductRouter } from './server/routes/ask_product.routes.js';
 import { testRouter } from './server/routes/test.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -39,14 +40,16 @@ async function startServer() {
   app.use('/api', problemRouter);
   app.use('/api', opportunityRouter);
   app.use('/api', hypothesisRouter);
+  app.use('/api', askProductRouter);
   app.use('/api', testRouter);
 
   // Global Error Handler for API
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     console.error('[Product OS Server Error]:', err);
     res.status(err.status || 500).json({
-      error: 'Erro interno no servidor',
-      message: err.message || 'Ocorreu um erro inesperado ao processar a requisição.',
+      success: false,
+      error: err.code || 'INTERNAL_SERVER_ERROR',
+      message: err.message || 'Ocorreu um erro interno ao processar a requisição.',
     });
   });
 

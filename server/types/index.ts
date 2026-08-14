@@ -102,6 +102,7 @@ export interface Hypothesis {
   status: HypothesisStatus;
   created_at: string;
   updated_at: string;
+  opportunity_title?: string;
 }
 
 export interface AuthenticatedUser {

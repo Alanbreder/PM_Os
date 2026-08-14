@@ -10,10 +10,11 @@ import {
 } from '../schemas/index.js';
 import { dbStore } from '../db/store.js';
 import { z } from 'zod';
+import { applyPagination } from '../utils/pagination.js';
 
 export const problemRouter = Router();
 
-// List problems with attached evidences
+// List problems with attached evidences and pagination
 problemRouter.get(
   '/problems',
   authenticate,
@@ -22,16 +23,25 @@ problemRouter.get(
     const workspaceId = req.workspaceId!;
 
     try {
-      const problems = await dbStore.listProblems(workspaceId);
-      res.json({ problems });
+      const allProblems = await dbStore.listProblems(workspaceId);
+      const { data, pagination } = applyPagination(allProblems, req.query.page, req.query.limit);
+
+      res.json({
+        problems: data,
+        pagination,
+      });
     } catch (error: any) {
       console.error('Error listing problems:', error);
-      res.status(500).json({ error: 'Erro interno ao listar problemas' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro interno ao listar problemas.',
+      });
     }
   }
 );
 
-// Get single problem by ID (Strict IDOR guard: validated workspace and problem ID)
+// Get single problem by ID
 problemRouter.get(
   '/problems/:id',
   authenticate,
@@ -44,18 +54,26 @@ problemRouter.get(
     try {
       const problem = await dbStore.getProblemById(workspaceId, problemId);
       if (!problem) {
-        res.status(404).json({ error: 'Problema não encontrado neste workspace' });
+        res.status(404).json({
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Problema não encontrado neste workspace.',
+        });
         return;
       }
       res.json({ problem });
     } catch (error: any) {
       console.error('Error fetching problem:', error);
-      res.status(500).json({ error: 'Erro ao buscar problema' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro ao buscar problema.',
+      });
     }
   }
 );
 
-// Create problem with optional evidence links (Strict cross-tenant validation)
+// Create problem with optional evidence links
 problemRouter.post(
   '/problems',
   authenticate,
@@ -74,12 +92,16 @@ problemRouter.post(
       res.status(201).json({ problem });
     } catch (error: any) {
       console.error('Error creating problem:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao criar problema' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao criar problema.',
+      });
     }
   }
 );
 
-// Update problem details and optionally sync linked evidences (Strict tenant guard)
+// Update problem details
 problemRouter.patch(
   '/problems/:id',
   authenticate,
@@ -100,12 +122,16 @@ problemRouter.patch(
       res.json({ problem: updated });
     } catch (error: any) {
       console.error('Error updating problem:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao atualizar problema' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao atualizar problema.',
+      });
     }
   }
 );
 
-// Delete problem (Strict tenant guard)
+// Delete problem
 problemRouter.delete(
   '/problems/:id',
   authenticate,
@@ -117,10 +143,14 @@ problemRouter.delete(
 
     try {
       await dbStore.deleteProblem(workspaceId, problemId);
-      res.json({ success: true, message: 'Problema removido com sucesso' });
+      res.json({ success: true, message: 'Problema removido com sucesso.' });
     } catch (error: any) {
       console.error('Error deleting problem:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao excluir problema' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao excluir problema.',
+      });
     }
   }
 );
@@ -141,7 +171,11 @@ problemRouter.post(
       res.json({ success: true, links });
     } catch (error: any) {
       console.error('Error linking evidences:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao vincular evidências' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao vincular evidências.',
+      });
     }
   }
 );
@@ -163,11 +197,14 @@ problemRouter.delete(
 
     try {
       await dbStore.unlinkEvidenceFromProblem(workspaceId, problemId, evidenceId);
-      res.json({ success: true, message: 'Evidência desvinculada do problema com sucesso' });
+      res.json({ success: true, message: 'Evidência desvinculada do problema com sucesso.' });
     } catch (error: any) {
       console.error('Error unlinking evidence:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao desvincular evidência' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao desvincular evidência.',
+      });
     }
   }
 );
-

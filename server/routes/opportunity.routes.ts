@@ -10,10 +10,11 @@ import {
 } from '../schemas/index.js';
 import { dbStore } from '../db/store.js';
 import { z } from 'zod';
+import { applyPagination } from '../utils/pagination.js';
 
 export const opportunityRouter = Router();
 
-// List opportunities with connected problems
+// List opportunities with connected problems and pagination
 opportunityRouter.get(
   '/opportunities',
   authenticate,
@@ -22,16 +23,25 @@ opportunityRouter.get(
     const workspaceId = req.workspaceId!;
 
     try {
-      const opportunities = await dbStore.listOpportunities(workspaceId);
-      res.json({ opportunities });
+      const allOpps = await dbStore.listOpportunities(workspaceId);
+      const { data, pagination } = applyPagination(allOpps, req.query.page, req.query.limit);
+
+      res.json({
+        opportunities: data,
+        pagination,
+      });
     } catch (error: any) {
       console.error('Error listing opportunities:', error);
-      res.status(500).json({ error: 'Erro ao listar oportunidades' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro ao listar oportunidades.',
+      });
     }
   }
 );
 
-// Get single opportunity by ID (Strict IDOR guard)
+// Get single opportunity by ID
 opportunityRouter.get(
   '/opportunities/:id',
   authenticate,
@@ -44,18 +54,26 @@ opportunityRouter.get(
     try {
       const opportunity = await dbStore.getOpportunityById(workspaceId, opportunityId);
       if (!opportunity) {
-        res.status(404).json({ error: 'Oportunidade não encontrada neste workspace' });
+        res.status(404).json({
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Oportunidade não encontrada neste workspace.',
+        });
         return;
       }
       res.json({ opportunity });
     } catch (error: any) {
       console.error('Error fetching opportunity:', error);
-      res.status(500).json({ error: 'Erro ao buscar oportunidade' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro ao buscar oportunidade.',
+      });
     }
   }
 );
 
-// Create opportunity (Strict cross-tenant validation)
+// Create opportunity
 opportunityRouter.post(
   '/opportunities',
   authenticate,
@@ -74,7 +92,11 @@ opportunityRouter.post(
       res.status(201).json({ opportunity });
     } catch (error: any) {
       console.error('Error creating opportunity:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao criar oportunidade' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao criar oportunidade.',
+      });
     }
   }
 );
@@ -100,7 +122,11 @@ opportunityRouter.patch(
       res.json({ opportunity: updated });
     } catch (error: any) {
       console.error('Error updating opportunity:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao atualizar oportunidade' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao atualizar oportunidade.',
+      });
     }
   }
 );
@@ -117,10 +143,14 @@ opportunityRouter.delete(
 
     try {
       await dbStore.deleteOpportunity(workspaceId, opportunityId);
-      res.json({ success: true });
+      res.json({ success: true, message: 'Oportunidade removida com sucesso.' });
     } catch (error: any) {
       console.error('Error deleting opportunity:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao excluir oportunidade' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao excluir oportunidade.',
+      });
     }
   }
 );
@@ -141,7 +171,11 @@ opportunityRouter.post(
       res.json({ success: true, links });
     } catch (error: any) {
       console.error('Error linking problems to opportunity:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao vincular problemas' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao vincular problemas.',
+      });
     }
   }
 );
@@ -163,10 +197,14 @@ opportunityRouter.delete(
 
     try {
       await dbStore.unlinkProblemFromOpportunity(workspaceId, opportunityId, problemId);
-      res.json({ success: true });
+      res.json({ success: true, message: 'Problema desvinculado com sucesso.' });
     } catch (error: any) {
       console.error('Error unlinking problem from opportunity:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao desvincular problema' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao desvincular problema.',
+      });
     }
   }
 );

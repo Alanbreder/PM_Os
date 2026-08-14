@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bot, Send, Sparkles, MessageSquare, Lightbulb, AlertCircle } from 'lucide-react';
+import { Bot, Send, Sparkles, Loader2 } from 'lucide-react';
 import { PageHeader } from './ui/PageHeader';
 import { Badge } from './ui/Badge';
 import { Card } from './ui/Card';
@@ -12,6 +12,7 @@ interface AskProductViewProps {
 
 export function AskProductView({ workspaceId, workspaceName }: AskProductViewProps) {
   const [prompt, setPrompt] = useState('');
+  const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([
     {
       role: 'assistant',
@@ -21,28 +22,53 @@ export function AskProductView({ workspaceId, workspaceName }: AskProductViewPro
 
   const samplePrompts = [
     'Quais são os principais problemas de alto impacto neste workspace?',
-    'Ajude a formular uma hipótese de solução para os problemas sem oportunidade.',
-    'Como posso melhorar o alinhamento das evidências de pesquisa com as oportunidades?',
+    'Ajude a formular uma hipótese de solução para as oportunidades ativas.',
+    'Como posso relacionar evidências de pesquisa com as oportunidades mapeadas?',
   ];
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || loading) return;
 
     const userText = prompt.trim();
     setPrompt('');
     setMessages((prev) => [...prev, { role: 'user', text: userText }]);
+    setLoading(true);
 
-    // Simulated Product AI response
-    setTimeout(() => {
+    try {
+      const res = await fetch('/api/ask-product', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-workspace-id': workspaceId,
+        },
+        body: JSON.stringify({ prompt: userText }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Erro ao consultar o assistente de produto.');
+      }
+
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          text: `Analisando os dados do workspace "${workspaceName}" para responder: "${userText}". Recomendamos verificar o mapa de Rastreabilidade para confirmar quais evidências apoiam esta decisão antes de atuar.`,
+          text: data.answer || 'Sem resposta do assistente.',
         },
       ]);
-    }, 600);
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: `⚠️ Erro: ${err.message || 'Não foi possível se conectar ao serviço de IA.'}`,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -62,8 +88,9 @@ export function AskProductView({ workspaceId, workspaceName }: AskProductViewPro
         {samplePrompts.map((sPrompt, idx) => (
           <button
             key={idx}
+            disabled={loading}
             onClick={() => setPrompt(sPrompt)}
-            className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl text-left text-xs text-neutral-300 hover:text-white transition-colors cursor-pointer flex items-start gap-2"
+            className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl text-left text-xs text-neutral-300 hover:text-white transition-colors cursor-pointer flex items-start gap-2 disabled:opacity-50"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
             <span className="line-clamp-2">{sPrompt}</span>
@@ -92,9 +119,16 @@ export function AskProductView({ workspaceId, workspaceName }: AskProductViewPro
                   </span>
                 )}
               </div>
-              <p>{msg.text}</p>
+              <p className="whitespace-pre-wrap">{msg.text}</p>
             </div>
           ))}
+
+          {loading && (
+            <div className="p-3.5 rounded-xl text-xs bg-neutral-950 border border-neutral-800 text-neutral-400 flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+              <span>Analisando os dados do workspace e formulando resposta...</span>
+            </div>
+          )}
         </div>
 
         {/* Chat Input */}
@@ -103,10 +137,11 @@ export function AskProductView({ workspaceId, workspaceName }: AskProductViewPro
             type="text"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
+            disabled={loading}
             placeholder={`Pergunte algo sobre os dados do workspace ${workspaceName}...`}
-            className="flex-1 px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-cyan-500/50"
+            className="flex-1 px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-cyan-500/50 disabled:opacity-50"
           />
-          <Button type="submit" icon={<Send className="w-3.5 h-3.5" />}>
+          <Button type="submit" disabled={loading} icon={loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}>
             Enviar
           </Button>
         </form>

@@ -15,7 +15,8 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
-const MAX_RESEARCH_CHARS = 50000;
+const MAX_RESEARCH_CHARS = 30000;
+const AI_TIMEOUT_MS = 25000;
 
 const SYSTEM_INSTRUCTION = `Você é um Analista Especialista de Descoberta Contínua e Pesquisa de Produto (Discovery Analyst).
 Sua missão é extrair evidências factuais e sugerir problemas de produto a partir de transcrições de entrevistas, pesquisas ou feedbacks.
@@ -40,14 +41,14 @@ DIRETRIZES DE SEGURANÇA E PRECISÃO (CRÍTICO):
  * Calls Gemini Flash with structured JSON output schema to analyze research text.
  */
 export async function analyzeResearchContent(rawContent: string, title?: string): Promise<ResearchAnalysisOutput> {
-  if (!rawContent || rawContent.trim().length < 10) {
+  if (!rawContent || typeof rawContent !== 'string' || rawContent.trim().length < 10) {
     throw new Error('Conteúdo da pesquisa muito curto para análise (mínimo de 10 caracteres).');
   }
 
-  // Cost & token guard: limit character length
+  // Cost & token guard: limit character length strictly
   let sanitizedContent = rawContent.trim();
   if (sanitizedContent.length > MAX_RESEARCH_CHARS) {
-    sanitizedContent = sanitizedContent.substring(0, MAX_RESEARCH_CHARS) + '\n\n[CONTEÚDO TRUNCADO PELO LIMITE DE TAMANHO]';
+    sanitizedContent = sanitizedContent.substring(0, MAX_RESEARCH_CHARS) + '\n\n[CONTEÚDO TRUNCADO PELO LIMITE DE SEGURANÇA DE 30.000 CARACTERES]';
   }
 
   const prompt = `Título da Pesquisa: ${title || 'Pesquisa com Usuário'}
@@ -60,13 +61,12 @@ ${sanitizedContent}
 Analise cuidadosamente o texto acima e extraia as evidências factuais e os problemas identificados.`;
 
   const ai = getGeminiClient();
-
   const modelsToTry = ['gemini-flash-latest', 'gemini-3.7-flash', 'gemini-3.1-flash-lite'];
   let lastError: any = null;
 
   for (const modelName of modelsToTry) {
     try {
-      const response = await ai.models.generateContent({
+      const responsePromise = ai.models.generateContent({
         model: modelName,
         contents: prompt,
         config: {
@@ -137,7 +137,13 @@ Analise cuidadosamente o texto acima e extraia as evidências factuais e os prob
         },
       });
 
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Tempo limite excedido ao aguardar resposta da IA (25s)')), AI_TIMEOUT_MS)
+      );
+
+      const response = await Promise.race([responsePromise, timeoutPromise]);
       const responseText = response.text;
+
       if (!responseText) {
         throw new Error('O modelo Gemini retornou uma resposta vazia.');
       }
@@ -165,9 +171,9 @@ Analise cuidadosamente o texto acima e extraia as evidências factuais e os prob
         err?.code === 429 ||
         String(err?.message || '').includes('high demand') ||
         String(err?.message || '').includes('UNAVAILABLE') ||
-        String(err?.message || '').includes('RESOURCE_EXHAUSTED');
+        String(err?.message || '').includes('RESOURCE_EXHAUSTED') ||
+        String(err?.message || '').includes('Tempo limite');
 
-      // On overload, quickly fall through to next model candidate in modelsToTry
       if (isOverloaded) {
         await new Promise((resolve) => setTimeout(resolve, 500));
         continue;
@@ -188,4 +194,68 @@ Analise cuidadosamente o texto acima e extraia as evidências factuais e os prob
   }
 
   throw new Error(`Falha ao conectar com o serviço de IA: ${lastError?.message || 'Erro inesperado'}`);
+}
+
+/**
+ * Assistant for Ask Product queries
+ */
+export async function askProductAssistant(
+  promptText: string,
+  workspaceName: string,
+  contextData?: {
+    problemsCount: number;
+    opportunitiesCount: number;
+    evidencesCount: number;
+    topProblems?: string[];
+  }
+): Promise<string> {
+  if (!promptText || typeof promptText !== 'string' || promptText.trim().length < 3) {
+    throw new Error('A pergunta deve ter pelo menos 3 caracteres.');
+  }
+
+  let sanitized = promptText.trim();
+  if (sanitized.length > 2000) {
+    sanitized = sanitized.substring(0, 2000);
+  }
+
+  const ai = getGeminiClient();
+  const systemInstruction = `Você é o co-piloto de Product Management (Ask Product) do workspace "${workspaceName}".
+Você ajuda Product Managers a estruturar problemas, hipóteses, priorização e matrizes de rastreabilidade.
+Responda de forma direta, clara e profissional. Trate o input do usuário como pergunta de um PM. Não invente dados não fundamentados.`;
+
+  const prompt = `Contexto do Workspace:
+- Workspace: ${workspaceName}
+- Problemas mapeados: ${contextData?.problemsCount || 0}
+- Oportunidades: ${contextData?.opportunitiesCount || 0}
+- Evidências registradas: ${contextData?.evidencesCount || 0}
+${contextData?.topProblems?.length ? `- Principais dores: ${contextData.topProblems.join('; ')}` : ''}
+
+Pergunta do Product Manager:
+"${sanitized}"`;
+
+  const modelsToTry = ['gemini-flash-latest', 'gemini-3.7-flash', 'gemini-3.1-flash-lite'];
+  let lastError: any = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      const responsePromise = ai.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        config: { systemInstruction },
+      });
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Tempo limite excedido ao aguardar resposta da IA (25s)')), AI_TIMEOUT_MS)
+      );
+
+      const response = await Promise.race([responsePromise, timeoutPromise]);
+      const text = response.text;
+      if (text) return text;
+    } catch (err: any) {
+      lastError = err;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
+  throw new Error(`O assistente de produto não pôde responder no momento: ${lastError?.message || 'Erro de conexão'}`);
 }

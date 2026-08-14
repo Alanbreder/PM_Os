@@ -22,16 +22,19 @@ export function validate(schemas: ValidationTargets) {
       next();
     } catch (error) {
       if (error instanceof ZodError) {
+        const issuesMsg = error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
         res.status(400).json({
-          error: 'Erro de validação nos dados enviados',
-          details: error.issues.map((e) => ({
-            field: e.path.join('.'),
-            message: e.message,
-          })),
+          success: false,
+          error: 'VALIDATION_ERROR',
+          message: `Dados inválidos: ${issuesMsg}`,
         });
         return;
       }
-      res.status(400).json({ error: 'Payload de requisição inválido' });
+      res.status(400).json({
+        success: false,
+        error: 'INVALID_PAYLOAD',
+        message: 'Payload de requisição inválido ou malformatado.',
+      });
     }
   };
 }

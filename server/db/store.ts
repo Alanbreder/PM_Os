@@ -1106,6 +1106,13 @@ class PostgresStore {
     data: Omit<Hypothesis, 'id' | 'workspace_id' | 'created_at' | 'updated_at'>
   ): Promise<Hypothesis> {
     try {
+      if (!data.opportunity_id || typeof data.opportunity_id !== 'string' || data.opportunity_id.trim() === '') {
+        throw new Error('Oportunidade é obrigatória.');
+      }
+      if (!data.metric_target || typeof data.metric_target !== 'string' || data.metric_target.trim() === '') {
+        throw new Error('Métrica de sucesso é obrigatória.');
+      }
+
       // Strict cross-tenant validation: Verify parent opportunity belongs strictly to this workspace
       const opp = await this.getOpportunityById(workspaceId, data.opportunity_id);
       if (!opp) {
@@ -1119,7 +1126,7 @@ class PostgresStore {
           opportunityId: data.opportunity_id,
           statement: data.statement,
           metricTarget: data.metric_target,
-          confidenceScore: data.confidence_score || 50,
+          confidenceScore: data.confidence_score ?? 3,
           status: data.status || 'draft',
         })
         .returning();
@@ -1128,6 +1135,7 @@ class PostgresStore {
         id: h.id,
         workspace_id: h.workspaceId,
         opportunity_id: h.opportunityId,
+        opportunity_title: opp.title,
         statement: h.statement,
         metric_target: h.metricTarget,
         confidence_score: h.confidenceScore,
@@ -1136,7 +1144,7 @@ class PostgresStore {
         updated_at: h.updatedAt.toISOString(),
       };
     } catch (err: any) {
-      console.error('Postgres createHypothesis error:', err);
+      console.error('Postgres createHypothesis error:', err.message || err);
       throw err;
     }
   }

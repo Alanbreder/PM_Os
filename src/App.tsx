@@ -90,9 +90,79 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (activeWorkspaceId) {
-      fetchAllWorkspaceData();
-    }
+    if (!activeWorkspaceId) return;
+
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    // 1. Instantly clear stale workspace data and selections
+    setResearches([]);
+    setProblems([]);
+    setOpportunities([]);
+    setEvidences([]);
+    setHypotheses([]);
+    setSelectedResearchId(null);
+    setSelectedProblemId(null);
+    setSelectedOpportunityId(null);
+    setProblemToEdit(null);
+    setOpportunityToEdit(null);
+
+    setLoadingResearches(true);
+    setLoadingProblems(true);
+    setLoadingOpportunities(true);
+
+    const headers = { 'x-workspace-id': activeWorkspaceId };
+
+    const loadWorkspaceData = async () => {
+      try {
+        const [resR, resP, resO, resE, resH] = await Promise.allSettled([
+          fetch('/api/researches', { headers, signal }),
+          fetch('/api/problems', { headers, signal }),
+          fetch('/api/opportunities', { headers, signal }),
+          fetch('/api/evidences', { headers, signal }),
+          fetch('/api/hypotheses', { headers, signal }),
+        ]);
+
+        if (signal.aborted) return;
+
+        if (resR.status === 'fulfilled' && resR.value.ok) {
+          const data = await resR.value.json();
+          setResearches(data.researches || []);
+        }
+        if (resP.status === 'fulfilled' && resP.value.ok) {
+          const data = await resP.value.json();
+          setProblems(data.problems || []);
+        }
+        if (resO.status === 'fulfilled' && resO.value.ok) {
+          const data = await resO.value.json();
+          setOpportunities(data.opportunities || []);
+        }
+        if (resE.status === 'fulfilled' && resE.value.ok) {
+          const data = await resE.value.json();
+          setEvidences(data.evidences || []);
+        }
+        if (resH.status === 'fulfilled' && resH.value.ok) {
+          const data = await resH.value.json();
+          setHypotheses(data.hypotheses || []);
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error('Erro ao carregar dados do workspace:', err);
+        }
+      } finally {
+        if (!signal.aborted) {
+          setLoadingResearches(false);
+          setLoadingProblems(false);
+          setLoadingOpportunities(false);
+        }
+      }
+    };
+
+    loadWorkspaceData();
+
+    return () => {
+      controller.abort();
+    };
   }, [activeWorkspaceId]);
 
   const fetchWorkspaces = async () => {
@@ -110,14 +180,6 @@ export default function App() {
     } catch (err) {
       console.error('Erro ao listar workspaces:', err);
     }
-  };
-
-  const fetchAllWorkspaceData = async () => {
-    fetchResearches();
-    fetchProblems();
-    fetchOpportunities();
-    fetchEvidences();
-    fetchHypotheses();
   };
 
   const fetchResearches = async () => {

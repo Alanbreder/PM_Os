@@ -340,6 +340,93 @@ export async function runSecurityIsolationTests(): Promise<TestResult[]> {
     passed: crossLinkProblemsRejected,
   });
 
+  // --- SUÍTE DE TESTES ESPECÍFICOS DE HYPOTHESIS ---
+
+  // Test S (Cenário A & E): Usuário cria hipótese em Oportunidade do próprio workspace
+  let hypA: any = null;
+  let createHypAError: string | null = null;
+  try {
+    hypA = await dbStore.createHypothesis(wsA.id, {
+      opportunity_id: oppA.id,
+      statement: 'Se simplificarmos o formulário, reduziremos o abandono.',
+      metric_target: 'Aumentar conversão em +15%',
+      confidence_score: 4,
+      status: 'draft',
+    });
+  } catch (err: any) {
+    createHypAError = err.message;
+  }
+
+  results.push({
+    name: 'S) [Hypothesis] Criar hipótese em Oportunidade do próprio workspace (Cenário A & E)',
+    expected: 'Permitido e vinculada à Oportunidade Alpha',
+    actual: hypA && hypA.opportunity_id === oppA.id ? `Sucesso (ID: ${hypA.id}, Opp: ${hypA.opportunity_title})` : `Falha: ${createHypAError}`,
+    passed: Boolean(hypA && hypA.opportunity_id === oppA.id && hypA.opportunity_title === oppA.title),
+  });
+
+  // Test T (Cenário B): Usuário tenta criar hipótese no Workspace A referenciando Oportunidade do Workspace B
+  let crossHypRejected = false;
+  try {
+    await dbStore.createHypothesis(wsA.id, {
+      opportunity_id: oppB.id, // oppB pertence ao Workspace B!
+      statement: 'Tentativa de criar hipótese cross-tenant invasora.',
+      metric_target: 'Reduzir o tempo de resposta em 30%',
+      confidence_score: 3,
+      status: 'draft',
+    });
+  } catch (err: any) {
+    crossHypRejected = true;
+  }
+
+  results.push({
+    name: 'T) [Hypothesis] Tentativa de criar hipótese vinculada a Oportunidade de outro workspace (Cenário B)',
+    expected: 'Rejeitado com erro de validação cross-tenant (Oportunidade não pertence ao workspace)',
+    actual: crossHypRejected ? 'Rejeitado com erro de isolamento de tenant' : 'Permitido indevidamente',
+    passed: crossHypRejected,
+  });
+
+  // Test U (Cenário C): Tentativa de criar hipótese com opportunity_id ausente
+  let missingOppRejected = false;
+  try {
+    await dbStore.createHypothesis(wsA.id, {
+      opportunity_id: '' as any,
+      statement: 'Hipótese sem oportunidade pai vinculada.',
+      metric_target: 'Métrica de teste válida',
+      confidence_score: 3,
+      status: 'draft',
+    });
+  } catch (err: any) {
+    missingOppRejected = true;
+  }
+
+  results.push({
+    name: 'U) [Hypothesis] Criar hipótese sem opportunity_id (Cenário C)',
+    expected: 'Rejeitado com erro de obrigatoriedade de Oportunidade',
+    actual: missingOppRejected ? 'Rejeitado (Oportunidade é obrigatória)' : 'Permitido indevidamente sem Oportunidade',
+    passed: missingOppRejected,
+  });
+
+  // Test V (Cenário D): Tentativa de criar hipótese sem metric_target
+  let missingMetricRejected = false;
+  try {
+    await dbStore.createHypothesis(wsA.id, {
+      opportunity_id: oppA.id,
+      statement: 'Hipótese sem métrica alvo definida.',
+      metric_target: '' as any,
+      confidence_score: 3,
+      status: 'draft',
+    });
+  } catch (err: any) {
+    missingMetricRejected = true;
+  }
+
+  results.push({
+    name: 'V) [Hypothesis] Criar hipótese sem metric_target (Cenário D)',
+    expected: 'Rejeitado com erro de obrigatoriedade de métrica alvo',
+    actual: missingMetricRejected ? 'Rejeitado (Métrica de sucesso é obrigatória)' : 'Permitido indevidamente sem Métrica',
+    passed: missingMetricRejected,
+  });
+
   // Cleanup test workspaces
   try {
     await db.delete(schema.workspaces).where(eq(schema.workspaces.id, wsA.id));

@@ -3,10 +3,11 @@ import { authenticate, requireWorkspace } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { createEvidenceSchema, batchCreateEvidenceSchema } from '../schemas/index.js';
 import { dbStore } from '../db/store.js';
+import { applyPagination } from '../utils/pagination.js';
 
 export const evidenceRouter = Router();
 
-// List evidences in workspace
+// List evidences in workspace with pagination
 evidenceRouter.get(
   '/evidences',
   authenticate,
@@ -16,16 +17,25 @@ evidenceRouter.get(
     const researchId = req.query.research_id as string | undefined;
 
     try {
-      const evidences = await dbStore.listEvidences(workspaceId, researchId);
-      res.json({ evidences });
+      const allEvidences = await dbStore.listEvidences(workspaceId, researchId);
+      const { data, pagination } = applyPagination(allEvidences, req.query.page, req.query.limit);
+
+      res.json({
+        evidences: data,
+        pagination,
+      });
     } catch (error: any) {
       console.error('Error listing evidences:', error);
-      res.status(500).json({ error: 'Erro ao listar evidências' });
+      res.status(500).json({
+        success: false,
+        error: 'INTERNAL_SERVER_ERROR',
+        message: 'Erro ao listar evidências.',
+      });
     }
   }
 );
 
-// Create single evidence (Strict verification that research_id belongs to req.workspaceId)
+// Create single evidence
 evidenceRouter.post(
   '/evidences',
   authenticate,
@@ -46,7 +56,11 @@ evidenceRouter.post(
       res.status(201).json({ evidence });
     } catch (error: any) {
       console.error('Error creating evidence:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao salvar evidência' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao salvar evidência.',
+      });
     }
   }
 );
@@ -76,7 +90,11 @@ evidenceRouter.post(
       res.status(201).json({ evidences: created });
     } catch (error: any) {
       console.error('Error in batch create evidences:', error.message);
-      res.status(400).json({ error: error.message || 'Erro ao criar lote de evidências' });
+      res.status(400).json({
+        success: false,
+        error: 'BAD_REQUEST',
+        message: error.message || 'Erro ao criar lote de evidências.',
+      });
     }
   }
 );

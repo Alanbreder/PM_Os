@@ -41,7 +41,8 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 
   if (!token) {
     res.status(401).json({
-      error: 'Não autenticado',
+      success: false,
+      error: 'UNAUTHORIZED',
       message: 'Token de autenticação ausente ou inválido. Forneça o cabeçalho Authorization: Bearer <Firebase_ID_Token>.',
     });
     return;
@@ -65,7 +66,8 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   } catch (err: any) {
     console.error('Firebase token verification failure:', err.message);
     res.status(401).json({
-      error: 'Autenticação inválida',
+      success: false,
+      error: 'UNAUTHORIZED',
       message: 'Token Firebase inválido ou expirado.',
     });
   }
@@ -79,7 +81,11 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
  */
 export async function requireWorkspace(req: Request, res: Response, next: NextFunction): Promise<void> {
   if (!req.user) {
-    res.status(401).json({ error: 'Usuário não autenticado' });
+    res.status(401).json({
+      success: false,
+      error: 'UNAUTHORIZED',
+      message: 'Usuário não autenticado.',
+    });
     return;
   }
 
@@ -90,7 +96,8 @@ export async function requireWorkspace(req: Request, res: Response, next: NextFu
 
   if (!requestedWorkspaceId) {
     res.status(400).json({
-      error: 'Workspace não especificado',
+      success: false,
+      error: 'BAD_REQUEST',
       message: 'Envie o cabeçalho "x-workspace-id" com o identificador do workspace.',
     });
     return;
@@ -109,7 +116,8 @@ export async function requireWorkspace(req: Request, res: Response, next: NextFu
 
     if (!memberRecord) {
       res.status(403).json({
-        error: 'Acesso negado ao Workspace',
+        success: false,
+        error: 'FORBIDDEN',
         message: 'O usuário autenticado não possui acesso a este workspace ou o workspace não existe.',
       });
       return;
@@ -127,7 +135,9 @@ export async function requireWorkspace(req: Request, res: Response, next: NextFu
   } catch (error: any) {
     console.error('requireWorkspace error:', error);
     res.status(500).json({
-      error: 'Erro interno de autorização de workspace',
+      success: false,
+      error: 'INTERNAL_SERVER_ERROR',
+      message: 'Erro interno de autorização de workspace.',
     });
   }
 }
