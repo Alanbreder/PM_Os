@@ -61,7 +61,7 @@ Analise cuidadosamente o texto acima e extraia as evidências factuais e os prob
 
   const ai = getGeminiClient();
 
-  const modelsToTry = ['gemini-3.7-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+  const modelsToTry = ['gemini-flash-latest', 'gemini-3.7-flash', 'gemini-3.1-flash-lite'];
   let lastError: any = null;
 
   for (const modelName of modelsToTry) {
@@ -145,15 +145,13 @@ Analise cuidadosamente o texto acima e extraia as evidências factuais e os prob
       let parsed: unknown;
       try {
         parsed = JSON.parse(responseText);
-      } catch (err: any) {
-        console.error(`Falha no parse do JSON retornado pelo Gemini (${modelName}):`, responseText);
+      } catch {
         throw new Error('Falha ao interpretar a resposta estruturada da IA.');
       }
 
       // Strict validation using Zod
       const validationResult = aiAnalysisResultSchema.safeParse(parsed);
       if (!validationResult.success) {
-        console.error('Falha na validação do schema Zod da análise:', validationResult.error);
         throw new Error('A resposta gerada pela IA não seguiu a estrutura de dados esperada.');
       }
 
@@ -168,11 +166,6 @@ Analise cuidadosamente o texto acima e extraia as evidências factuais e os prob
         String(err?.message || '').includes('high demand') ||
         String(err?.message || '').includes('UNAVAILABLE') ||
         String(err?.message || '').includes('RESOURCE_EXHAUSTED');
-
-      console.warn(
-        `Chamada ao modelo ${modelName} ${isOverloaded ? '(alta demanda temporária / 503)' : 'falhou'}:`,
-        err?.message || err
-      );
 
       // On overload, quickly fall through to next model candidate in modelsToTry
       if (isOverloaded) {
