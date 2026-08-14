@@ -96,7 +96,7 @@ researchRouter.post(
         return;
       }
 
-      // 2. Call Gemini 3.7 Flash with structured schema & system instructions
+      // 2. Call Gemini Flash with structured schema & system instructions
       const analysis = await analyzeResearchContent(research.raw_content, research.title);
 
       res.json({

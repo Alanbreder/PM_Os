@@ -280,8 +280,28 @@ class PostgresStore {
       }
 
       const rows = await db
-        .select()
+        .select({
+          id: schema.evidences.id,
+          workspaceId: schema.evidences.workspaceId,
+          researchId: schema.evidences.researchId,
+          quote: schema.evidences.quote,
+          context: schema.evidences.context,
+          confidenceLevel: schema.evidences.confidenceLevel,
+          tags: schema.evidences.tags,
+          createdAt: schema.evidences.createdAt,
+          updatedAt: schema.evidences.updatedAt,
+          researchTitle: schema.researches.title,
+          researchSourceType: schema.researches.sourceType,
+          researchParticipantInfo: schema.researches.participantInfo,
+        })
         .from(schema.evidences)
+        .leftJoin(
+          schema.researches,
+          and(
+            eq(schema.evidences.researchId, schema.researches.id),
+            eq(schema.researches.workspaceId, workspaceId)
+          )
+        )
         .where(and(...conditions))
         .orderBy(desc(schema.evidences.createdAt));
 
@@ -295,6 +315,9 @@ class PostgresStore {
         tags: (e.tags as string[]) || [],
         created_at: e.createdAt.toISOString(),
         updated_at: e.updatedAt.toISOString(),
+        research_title: e.researchTitle || undefined,
+        research_source_type: (e.researchSourceType as any) || undefined,
+        research_participant_name: (e.researchParticipantInfo as any)?.name || undefined,
       }));
     } catch (err) {
       console.error('Postgres listEvidences error:', err);
@@ -416,8 +439,28 @@ class PostgresStore {
       let attached: Evidence[] = [];
       if (evidenceIds.length > 0) {
         const evRows = await db
-          .select()
+          .select({
+            id: schema.evidences.id,
+            workspaceId: schema.evidences.workspaceId,
+            researchId: schema.evidences.researchId,
+            quote: schema.evidences.quote,
+            context: schema.evidences.context,
+            confidenceLevel: schema.evidences.confidenceLevel,
+            tags: schema.evidences.tags,
+            createdAt: schema.evidences.createdAt,
+            updatedAt: schema.evidences.updatedAt,
+            researchTitle: schema.researches.title,
+            researchSourceType: schema.researches.sourceType,
+            researchParticipantInfo: schema.researches.participantInfo,
+          })
           .from(schema.evidences)
+          .leftJoin(
+            schema.researches,
+            and(
+              eq(schema.evidences.researchId, schema.researches.id),
+              eq(schema.researches.workspaceId, workspaceId)
+            )
+          )
           .where(
             and(
               eq(schema.evidences.workspaceId, workspaceId),
@@ -434,6 +477,9 @@ class PostgresStore {
           tags: (e.tags as string[]) || [],
           created_at: e.createdAt.toISOString(),
           updated_at: e.updatedAt.toISOString(),
+          research_title: e.researchTitle || undefined,
+          research_source_type: (e.researchSourceType as any) || undefined,
+          research_participant_name: (e.researchParticipantInfo as any)?.name || undefined,
         }));
       }
 
@@ -484,7 +530,7 @@ class PostgresStore {
           title: data.title,
           description: data.description,
           impactLevel: data.impact_level || 'medium',
-          status: data.status || 'open',
+          status: data.status || 'identified',
         })
         .returning();
 
@@ -508,6 +554,140 @@ class PostgresStore {
       };
     } catch (err: any) {
       console.error('Postgres createProblem error:', err);
+      throw err;
+    }
+  }
+
+  async updateProblem(
+    workspaceId: string,
+    id: string,
+    data: Partial<Omit<Problem, 'id' | 'workspace_id' | 'created_at' | 'updated_at' | 'evidences'>>,
+    evidenceIds?: string[]
+  ): Promise<Problem> {
+    try {
+      const existing = await this.getProblemById(workspaceId, id);
+      if (!existing) {
+        throw new Error('Problema não encontrado neste workspace');
+      }
+
+      // If evidenceIds provided, validate all belong to workspaceId
+      if (evidenceIds !== undefined) {
+        if (evidenceIds.length > 0) {
+          const validEvidences = await db
+            .select({ id: schema.evidences.id })
+            .from(schema.evidences)
+            .where(
+              and(
+                eq(schema.evidences.workspaceId, workspaceId),
+                inArray(schema.evidences.id, evidenceIds)
+              )
+            );
+
+          if (validEvidences.length !== evidenceIds.length) {
+            throw new Error('Uma ou mais evidências selecionadas não pertencem a este workspace.');
+          }
+        }
+
+        // Replace junction rows for this problem in workspace
+        await db
+          .delete(schema.problemEvidences)
+          .where(
+            and(
+              eq(schema.problemEvidences.workspaceId, workspaceId),
+              eq(schema.problemEvidences.problemId, id)
+            )
+          );
+
+        for (const evId of evidenceIds) {
+          await db.insert(schema.problemEvidences).values({
+            workspaceId,
+            problemId: id,
+            evidenceId: evId,
+          });
+        }
+      }
+
+      const updateValues: Record<string, any> = {
+        updatedAt: new Date(),
+      };
+      if (data.title !== undefined) updateValues.title = data.title;
+      if (data.description !== undefined) updateValues.description = data.description;
+      if (data.impact_level !== undefined) updateValues.impactLevel = data.impact_level;
+      if (data.status !== undefined) updateValues.status = data.status;
+
+      await db
+        .update(schema.problems)
+        .set(updateValues)
+        .where(
+          and(
+            eq(schema.problems.id, id),
+            eq(schema.problems.workspaceId, workspaceId)
+          )
+        );
+
+      const updated = await this.getProblemById(workspaceId, id);
+      if (!updated) {
+        throw new Error('Falha ao recuperar problema atualizado');
+      }
+      return updated;
+    } catch (err: any) {
+      console.error('Postgres updateProblem error:', err);
+      throw err;
+    }
+  }
+
+  async deleteProblem(workspaceId: string, id: string): Promise<boolean> {
+    try {
+      const existing = await this.getProblemById(workspaceId, id);
+      if (!existing) {
+        throw new Error('Problema não encontrado neste workspace');
+      }
+
+      await db
+        .delete(schema.problemEvidences)
+        .where(
+          and(
+            eq(schema.problemEvidences.workspaceId, workspaceId),
+            eq(schema.problemEvidences.problemId, id)
+          )
+        );
+
+      await db
+        .delete(schema.problems)
+        .where(
+          and(
+            eq(schema.problems.id, id),
+            eq(schema.problems.workspaceId, workspaceId)
+          )
+        );
+
+      return true;
+    } catch (err: any) {
+      console.error('Postgres deleteProblem error:', err);
+      throw err;
+    }
+  }
+
+  async unlinkEvidenceFromProblem(workspaceId: string, problemId: string, evidenceId: string): Promise<boolean> {
+    try {
+      const problem = await this.getProblemById(workspaceId, problemId);
+      if (!problem) {
+        throw new Error('Problema não encontrado neste workspace');
+      }
+
+      await db
+        .delete(schema.problemEvidences)
+        .where(
+          and(
+            eq(schema.problemEvidences.workspaceId, workspaceId),
+            eq(schema.problemEvidences.problemId, problemId),
+            eq(schema.problemEvidences.evidenceId, evidenceId)
+          )
+        );
+
+      return true;
+    } catch (err: any) {
+      console.error('Postgres unlinkEvidenceFromProblem error:', err);
       throw err;
     }
   }

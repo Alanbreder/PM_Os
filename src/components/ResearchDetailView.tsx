@@ -21,6 +21,8 @@ interface ResearchDetailViewProps {
   workspaceId: string;
   onBack: () => void;
   onStartAIAnalysis: () => void;
+  onCreateProblemFromEvidence?: (evidenceId: string) => void;
+  onSelectProblem?: (problemId: string) => void;
 }
 
 export const ResearchDetailView: React.FC<ResearchDetailViewProps> = ({
@@ -28,6 +30,8 @@ export const ResearchDetailView: React.FC<ResearchDetailViewProps> = ({
   workspaceId,
   onBack,
   onStartAIAnalysis,
+  onCreateProblemFromEvidence,
+  onSelectProblem,
 }) => {
   const [research, setResearch] = useState<Research | null>(null);
   const [evidences, setEvidences] = useState<Evidence[]>([]);
@@ -292,6 +296,17 @@ export const ResearchDetailView: React.FC<ResearchDetailViewProps> = ({
                       <span className="text-neutral-500">Contexto:</span> {ev.context}
                     </p>
                   )}
+
+                  {onCreateProblemFromEvidence && (
+                    <div className="pt-2 border-t border-neutral-800 flex justify-end">
+                      <button
+                        onClick={() => onCreateProblemFromEvidence(ev.id)}
+                        className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium inline-flex items-center gap-1 transition-colors"
+                      >
+                        <span>+ Criar Problema a partir desta evidência</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -319,10 +334,15 @@ export const ResearchDetailView: React.FC<ResearchDetailViewProps> = ({
               {problems.map((prob) => (
                 <div
                   key={prob.id}
-                  className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-2 text-neutral-200"
+                  onClick={() => onSelectProblem && onSelectProblem(prob.id)}
+                  className={`bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-2 text-neutral-200 transition-all ${
+                    onSelectProblem ? 'hover:border-neutral-700 cursor-pointer group' : ''
+                  }`}
                 >
                   <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-medium text-white">{prob.title}</h4>
+                    <h4 className="text-sm font-medium text-white group-hover:text-emerald-400 transition-colors">
+                      {prob.title}
+                    </h4>
                     <span
                       className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border ${getImpactBadge(
                         prob.impact_level

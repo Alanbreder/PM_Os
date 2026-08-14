@@ -37,7 +37,7 @@ DIRETRIZES DE SEGURANÇA E PRECISÃO (CRÍTICO):
 6. Retorne estritamente o JSON no formato solicitado.`;
 
 /**
- * Calls Gemini 3.7 Flash with structured JSON output schema to analyze research text.
+ * Calls Gemini Flash with structured JSON output schema to analyze research text.
  */
 export async function analyzeResearchContent(rawContent: string, title?: string): Promise<ResearchAnalysisOutput> {
   if (!rawContent || rawContent.trim().length < 10) {

@@ -40,6 +40,10 @@ export interface Evidence {
   confidence_level: ConfidenceLevel;
   tags: string[];
   created_at: string;
+  updated_at?: string;
+  research_title?: string;
+  research_source_type?: ResearchSourceType;
+  research_participant_name?: string;
 }
 
 export type ProblemImpact = 'critical' | 'high' | 'medium' | 'low';
@@ -54,6 +58,7 @@ export interface Problem {
   status: ProblemStatus;
   evidences?: Evidence[];
   created_at: string;
+  updated_at?: string;
 }
 
 // AI Suggestions (Human-in-the-loop)

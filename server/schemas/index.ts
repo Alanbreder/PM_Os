@@ -69,7 +69,7 @@ export const createProblemSchema = z.object({
   evidence_ids: z.array(uuidSchema).default([]),
 });
 
-export const updateProblemSchema = createProblemSchema.omit({ evidence_ids: true }).partial();
+export const updateProblemSchema = createProblemSchema.partial();
 
 export const linkProblemEvidencesSchema = z.object({
   evidence_ids: z.array(uuidSchema).min(1, 'Pelo menos uma evidência deve ser vinculada'),

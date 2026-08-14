@@ -15,11 +15,25 @@ import {
   ExternalLink,
   Layers,
   Terminal,
+  ListTodo,
 } from 'lucide-react';
-import { Research, Workspace } from './types';
+import { Research, Workspace, Problem } from './types';
 import { ResearchForm } from './components/ResearchForm';
 import { ResearchAnalysisReview } from './components/ResearchAnalysisReview';
 import { ResearchDetailView } from './components/ResearchDetailView';
+import { ProblemBacklogView } from './components/ProblemBacklogView';
+import { ProblemDetailView } from './components/ProblemDetailView';
+import { ProblemFormView } from './components/ProblemFormView';
+
+type AppView =
+  | 'list'
+  | 'create'
+  | 'analyze_review'
+  | 'detail'
+  | 'problems_list'
+  | 'problem_create'
+  | 'problem_detail'
+  | 'security_tests';
 
 export default function App() {
   // Current active workspace
@@ -31,15 +45,22 @@ export default function App() {
   const [loadingResearches, setLoadingResearches] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Navigation views: 'list' | 'create' | 'analyze_review' | 'detail' | 'security_tests'
-  const [currentView, setCurrentView] = useState<'list' | 'create' | 'analyze_review' | 'detail' | 'security_tests'>('list');
+  // Problems list
+  const [problems, setProblems] = useState<Problem[]>([]);
+  const [loadingProblems, setLoadingProblems] = useState(true);
+  const [selectedProblemId, setSelectedProblemId] = useState<string | null>(null);
+  const [problemToEdit, setProblemToEdit] = useState<Problem | null>(null);
+  const [initialEvidenceIdForProblem, setInitialEvidenceIdForProblem] = useState<string | null>(null);
+
+  // Navigation views
+  const [currentView, setCurrentView] = useState<AppView>('problems_list');
   const [selectedResearchId, setSelectedResearchId] = useState<string | null>(null);
 
   // Security tests state
   const [securityReports, setSecurityReports] = useState<any[] | null>(null);
   const [runningSecurityTests, setRunningSecurityTests] = useState(false);
 
-  // Initialize workspaces and fetch researches
+  // Initialize workspaces and fetch data
   useEffect(() => {
     fetchWorkspaces();
   }, []);
@@ -47,6 +68,7 @@ export default function App() {
   useEffect(() => {
     if (activeWorkspaceId) {
       fetchResearches();
+      fetchProblems();
     }
   }, [activeWorkspaceId]);
 
@@ -86,6 +108,25 @@ export default function App() {
     }
   };
 
+  const fetchProblems = async () => {
+    setLoadingProblems(true);
+    try {
+      const res = await fetch('/api/problems', {
+        headers: {
+          'x-workspace-id': activeWorkspaceId,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProblems(data.problems || []);
+      }
+    } catch (err) {
+      console.error('Erro ao listar problemas:', err);
+    } finally {
+      setLoadingProblems(false);
+    }
+  };
+
   const runSecurityTests = async () => {
     setRunningSecurityTests(true);
     try {
@@ -109,12 +150,53 @@ export default function App() {
     }
   };
 
+  const handleCreateProblemFromEvidence = (evidenceId: string) => {
+    setProblemToEdit(null);
+    setInitialEvidenceIdForProblem(evidenceId);
+    setCurrentView('problem_create');
+  };
+
+  const handleStartCreateProblem = () => {
+    setProblemToEdit(null);
+    setInitialEvidenceIdForProblem(null);
+    setCurrentView('problem_create');
+  };
+
+  const handleStartEditProblem = (problem: Problem) => {
+    setProblemToEdit(problem);
+    setInitialEvidenceIdForProblem(null);
+    setCurrentView('problem_create');
+  };
+
+  const handleProblemSaved = (savedProblem: Problem) => {
+    fetchProblems();
+    setSelectedProblemId(savedProblem.id);
+    setCurrentView('problem_detail');
+  };
+
+  const handleProblemDeleted = () => {
+    fetchProblems();
+    setSelectedProblemId(null);
+    setCurrentView('problems_list');
+  };
+
   const filteredResearches = researches.filter((r) =>
     r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.raw_content.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const activeResearch = researches.find((r) => r.id === selectedResearchId);
+
+  const isDiscoveryView =
+    currentView === 'list' ||
+    currentView === 'create' ||
+    currentView === 'analyze_review' ||
+    currentView === 'detail';
+
+  const isProblemView =
+    currentView === 'problems_list' ||
+    currentView === 'problem_create' ||
+    currentView === 'problem_detail';
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans antialiased p-4 md:p-8">
@@ -128,9 +210,9 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-semibold px-2 py-0.5 rounded">
-                  Etapa 2 Operacional
+                  Etapa 3 Operacional
                 </span>
-                <span className="text-neutral-500 text-xs font-mono">Discovery + Gemini IA</span>
+                <span className="text-neutral-500 text-xs font-mono">Backlog + Validação + Rastreabilidade</span>
               </div>
               <h1 className="text-xl font-bold tracking-tight text-white mt-0.5">
                 Product OS <span className="text-neutral-500 font-normal text-sm">| Continuous Discovery</span>
@@ -138,8 +220,35 @@ export default function App() {
             </div>
           </div>
 
-          {/* Workspace Switcher & Security Suite Button */}
+          {/* Navigation Tabs & Workspace Switcher */}
           <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Primary Nav Switchers */}
+            <div className="flex items-center bg-neutral-900 border border-neutral-800 rounded-lg p-1 text-xs">
+              <button
+                onClick={() => setCurrentView('problems_list')}
+                className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                  isProblemView
+                    ? 'bg-neutral-800 text-white shadow-sm'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-orange-400" />
+                <span>Problem Backlog</span>
+              </button>
+
+              <button
+                onClick={() => setCurrentView('list')}
+                className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                  isDiscoveryView
+                    ? 'bg-neutral-800 text-white shadow-sm'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Entrevistas & Pesquisas</span>
+              </button>
+            </div>
+
             {/* Workspace Selector */}
             <div className="flex items-center gap-1.5 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-1.5 text-xs text-neutral-300">
               <Building className="w-3.5 h-3.5 text-neutral-400" />
@@ -148,7 +257,8 @@ export default function App() {
                 value={activeWorkspaceId}
                 onChange={(e) => {
                   setActiveWorkspaceId(e.target.value);
-                  setCurrentView('list');
+                  if (isProblemView) setCurrentView('problems_list');
+                  if (isDiscoveryView) setCurrentView('list');
                 }}
                 className="bg-transparent text-white font-medium focus:outline-none cursor-pointer"
               >
@@ -178,7 +288,67 @@ export default function App() {
           </div>
         </header>
 
-        {/* View 1: List Researches */}
+        {/* ============================================================ */}
+        {/* PROBLEM BACKLOG VIEWS (ETAPA 3) */}
+        {/* ============================================================ */}
+
+        {/* Problem View 1: List Problems */}
+        {currentView === 'problems_list' && (
+          <ProblemBacklogView
+            problems={problems}
+            loading={loadingProblems}
+            onSelectProblem={(problemId) => {
+              setSelectedProblemId(problemId);
+              setCurrentView('problem_detail');
+            }}
+            onCreateProblem={handleStartCreateProblem}
+            onSelectResearch={(researchId) => {
+              setSelectedResearchId(researchId);
+              setCurrentView('detail');
+            }}
+          />
+        )}
+
+        {/* Problem View 2: Problem Details with Traceability & Linked Evidences */}
+        {currentView === 'problem_detail' && selectedProblemId && (
+          <ProblemDetailView
+            problemId={selectedProblemId}
+            workspaceId={activeWorkspaceId}
+            onBack={() => {
+              fetchProblems();
+              setCurrentView('problems_list');
+            }}
+            onEdit={handleStartEditProblem}
+            onNavigateToResearch={(researchId) => {
+              setSelectedResearchId(researchId);
+              setCurrentView('detail');
+            }}
+            onProblemDeleted={handleProblemDeleted}
+          />
+        )}
+
+        {/* Problem View 3: Create or Edit Problem */}
+        {currentView === 'problem_create' && (
+          <ProblemFormView
+            workspaceId={activeWorkspaceId}
+            problemToEdit={problemToEdit}
+            initialEvidenceId={initialEvidenceIdForProblem}
+            onBack={() => {
+              if (problemToEdit) {
+                setCurrentView('problem_detail');
+              } else {
+                setCurrentView('problems_list');
+              }
+            }}
+            onSaved={handleProblemSaved}
+          />
+        )}
+
+        {/* ============================================================ */}
+        {/* DISCOVERY & RESEARCH VIEWS (ETAPAS 1 & 2) */}
+        {/* ============================================================ */}
+
+        {/* Discovery View 1: List Researches */}
         {currentView === 'list' && (
           <div className="space-y-6">
             {/* Action Bar */}
@@ -288,7 +458,7 @@ export default function App() {
           </div>
         )}
 
-        {/* View 2: Create Research */}
+        {/* Discovery View 2: Create Research */}
         {currentView === 'create' && (
           <ResearchForm
             workspaceId={activeWorkspaceId}
@@ -297,7 +467,7 @@ export default function App() {
           />
         )}
 
-        {/* View 3: AI Analysis Review (Human-in-the-Loop) */}
+        {/* Discovery View 3: AI Analysis Review (Human-in-the-Loop) */}
         {currentView === 'analyze_review' && selectedResearchId && (
           <ResearchAnalysisReview
             research={
@@ -317,22 +487,30 @@ export default function App() {
             onBack={() => setCurrentView('detail')}
             onSavedSuccess={() => {
               fetchResearches();
+              fetchProblems();
               setCurrentView('detail');
             }}
           />
         )}
 
-        {/* View 4: Research Details with Saved Evidences */}
+        {/* Discovery View 4: Research Details with Saved Evidences */}
         {currentView === 'detail' && selectedResearchId && (
           <ResearchDetailView
             researchId={selectedResearchId}
             workspaceId={activeWorkspaceId}
             onBack={() => setCurrentView('list')}
             onStartAIAnalysis={() => setCurrentView('analyze_review')}
+            onCreateProblemFromEvidence={handleCreateProblemFromEvidence}
+            onSelectProblem={(problemId) => {
+              setSelectedProblemId(problemId);
+              setCurrentView('problem_detail');
+            }}
           />
         )}
 
-        {/* View 5: Security & Verification Suite */}
+        {/* ============================================================ */}
+        {/* SECURITY & TEST SUITE */}
+        {/* ============================================================ */}
         {currentView === 'security_tests' && (
           <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 md:p-8 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-800 pb-4">
@@ -359,7 +537,7 @@ export default function App() {
                 </button>
 
                 <button
-                  onClick={() => setCurrentView('list')}
+                  onClick={() => setCurrentView('problems_list')}
                   className="px-3 py-2 text-xs text-neutral-400 hover:text-white rounded-lg transition-colors"
                 >
                   Fechar
@@ -426,3 +604,4 @@ export default function App() {
     </div>
   );
 }
+

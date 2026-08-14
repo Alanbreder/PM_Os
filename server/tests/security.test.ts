@@ -180,6 +180,68 @@ export async function runSecurityIsolationTests(): Promise<TestResult[]> {
     passed: shortContentRejected,
   });
 
+  // Test L: Cross-tenant update Problem (User in wsA attempts to link wsB evidence during update)
+  const problemA = await dbStore.createProblem(
+    wsA.id,
+    {
+      title: 'Problema Alpha Teste',
+      description: 'Descrição de teste para validação de segurança',
+      impact_level: 'high',
+      status: 'identified',
+    },
+    [evidenceA.id]
+  );
+
+  const evidenceB = await dbStore.createEvidence(wsB.id, {
+    research_id: researchB.id,
+    quote: 'Evidência exclusiva da Beta',
+    confidence_level: 'high',
+    tags: ['pain-point-b'],
+  });
+
+  let crossUpdateRejected = false;
+  try {
+    await dbStore.updateProblem(
+      wsA.id,
+      problemA.id,
+      { title: 'Problema Alpha Atualizado' },
+      [evidenceB.id] // Evidence belongs to wsB!
+    );
+  } catch (err: any) {
+    crossUpdateRejected = true;
+  }
+  results.push({
+    name: 'L) Tentativa de vincular Evidência de outro workspace durante atualização do Problema',
+    expected: 'Rejeitado com erro de validação cross-tenant',
+    actual: crossUpdateRejected ? 'Rejeitado com erro de validação cross-tenant' : 'Permitido indevidamente',
+    passed: crossUpdateRejected,
+  });
+
+  // Test M: Cross-tenant delete Problem (User in wsA attempts to delete Problem in wsB)
+  const problemB = await dbStore.createProblem(
+    wsB.id,
+    {
+      title: 'Problema Beta Teste',
+      description: 'Descrição de teste para validação de segurança no workspace B',
+      impact_level: 'medium',
+      status: 'identified',
+    },
+    []
+  );
+
+  let crossDeleteBlocked = false;
+  try {
+    await dbStore.deleteProblem(wsA.id, problemB.id); // Problem belongs to wsB!
+  } catch (err: any) {
+    crossDeleteBlocked = true;
+  }
+  results.push({
+    name: 'M) Tentativa de exclusão de Problema de outro workspace (IDOR Guard)',
+    expected: 'Bloqueado (Problema não encontrado no workspace autenticado)',
+    actual: crossDeleteBlocked ? 'Bloqueado (Problema não encontrado no workspace autenticado)' : 'Excluído indevidamente',
+    passed: crossDeleteBlocked,
+  });
+
   // Cleanup test workspaces
   try {
     await db.delete(schema.workspaces).where(eq(schema.workspaces.id, wsA.id));
