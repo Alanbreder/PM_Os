@@ -115,3 +115,26 @@ export interface AuthenticatedUser {
     name: string;
   };
 }
+
+export interface SuggestedEvidence {
+  id?: string;
+  quote: string;
+  context?: string | null;
+  confidence_level: ConfidenceLevel;
+  tags?: string[];
+  status?: 'accepted' | 'rejected' | 'pending';
+}
+
+export interface SuggestedProblem {
+  id?: string;
+  title: string;
+  description: string;
+  impact_level: ProblemImpact;
+  supporting_evidence_indices: number[];
+  status?: 'accepted' | 'rejected' | 'pending';
+}
+
+export interface ResearchAnalysisOutput {
+  evidences: SuggestedEvidence[];
+  problems: SuggestedProblem[];
+}

@@ -10,6 +10,7 @@ import { evidenceRouter } from './server/routes/evidence.routes.js';
 import { problemRouter } from './server/routes/problem.routes.js';
 import { opportunityRouter } from './server/routes/opportunity.routes.js';
 import { hypothesisRouter } from './server/routes/hypothesis.routes.js';
+import { testRouter } from './server/routes/test.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,6 +39,7 @@ async function startServer() {
   app.use('/api', problemRouter);
   app.use('/api', opportunityRouter);
   app.use('/api', hypothesisRouter);
+  app.use('/api', testRouter);
 
   // Global Error Handler for API
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {

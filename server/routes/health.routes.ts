@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { isSupabaseConfigured } from '../config/env.js';
 
 export const healthRouter = Router();
 
@@ -10,10 +9,10 @@ healthRouter.get('/health', (req: Request, res: Response) => {
     service: 'Product OS Backend',
     stage: 'Stage 1 - Foundation & Security',
     database: {
-      provider: 'PostgreSQL / Supabase',
-      configured: isSupabaseConfigured(),
-      rlsEnabled: true,
-      isolationMode: 'Strict Tenant Membership Validation',
+      provider: 'Google Cloud SQL (PostgreSQL)',
+      orm: 'Drizzle ORM',
+      configured: Boolean(process.env.SQL_HOST && process.env.SQL_USER),
+      isolationMode: 'Strict Tenant Membership Authorization + Foreign Keys',
     },
   });
 });

@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-export const uuidSchema = z.string().uuid({ message: 'Identificador UUID inválido' });
+export const uuidSchema = z
+  .string()
+  .regex(
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+    { message: 'Identificador UUID inválido' }
+  );
 
 export const uuidParamSchema = z.object({
   id: uuidSchema,
@@ -17,7 +22,7 @@ export const updateWorkspaceSchema = z.object({
 });
 
 export const addWorkspaceMemberSchema = z.object({
-  user_id: uuidSchema,
+  user_id: z.string().min(1, 'ID do usuário é obrigatório'),
   role: z.enum(['owner', 'admin', 'member', 'viewer']).default('member'),
 });
 
@@ -95,3 +100,44 @@ export const createHypothesisSchema = z.object({
 });
 
 export const updateHypothesisSchema = createHypothesisSchema.omit({ opportunity_id: true }).partial();
+
+// AI Analysis Validation Schemas
+export const suggestedEvidenceSchema = z.object({
+  quote: z.string().min(3, 'A citação deve ter conteúdo extraído do texto'),
+  context: z.string().optional().nullable(),
+  confidence_level: z.enum(['high', 'medium', 'low']).default('medium'),
+  tags: z.array(z.string()).default([]),
+});
+
+export const suggestedProblemSchema = z.object({
+  title: z.string().min(3, 'Título do problema sugerido'),
+  description: z.string().min(5, 'Descrição do problema sugerido'),
+  impact_level: z.enum(['critical', 'high', 'medium', 'low']).default('medium'),
+  supporting_evidence_indices: z.array(z.number().int().min(0)).default([]),
+});
+
+export const aiAnalysisResultSchema = z.object({
+  evidences: z.array(suggestedEvidenceSchema).default([]),
+  problems: z.array(suggestedProblemSchema).default([]),
+});
+
+export const approveAnalysisSchema = z.object({
+  approved_evidences: z.array(
+    z.object({
+      local_id: z.string().optional(),
+      quote: z.string().min(3),
+      context: z.string().optional().nullable(),
+      confidence_level: z.enum(['high', 'medium', 'low']).default('medium'),
+      tags: z.array(z.string()).default([]),
+    })
+  ).default([]),
+  approved_problems: z.array(
+    z.object({
+      title: z.string().min(3),
+      description: z.string().min(5),
+      impact_level: z.enum(['critical', 'high', 'medium', 'low']).default('medium'),
+      status: z.enum(['identified', 'exploring', 'validated', 'archived']).default('identified'),
+      supporting_evidence_local_indices: z.array(z.number().int().min(0)).default([]),
+    })
+  ).default([]),
+});
