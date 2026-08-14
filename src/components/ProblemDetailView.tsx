@@ -27,6 +27,7 @@ interface ProblemDetailViewProps {
   onEdit: (problem: Problem) => void;
   onNavigateToResearch: (researchId: string) => void;
   onProblemDeleted: () => void;
+  onCreateOpportunityFromProblem?: (problemId: string) => void;
 }
 
 export function ProblemDetailView({
@@ -36,6 +37,7 @@ export function ProblemDetailView({
   onEdit,
   onNavigateToResearch,
   onProblemDeleted,
+  onCreateOpportunityFromProblem,
 }: ProblemDetailViewProps) {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -292,9 +294,19 @@ export function ProblemDetailView({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          {onCreateOpportunityFromProblem && (
+            <button
+              onClick={() => onCreateOpportunityFromProblem(problem.id)}
+              className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Gerar Oportunidade</span>
+            </button>
+          )}
+
           <button
             onClick={() => onEdit(problem)}
-            className="px-3.5 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-medium rounded-lg border border-neutral-700 transition-colors flex items-center gap-1.5"
+            className="px-3.5 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-medium rounded-lg border border-neutral-700 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Edit3 className="w-3.5 h-3.5" />
             <span>Editar</span>

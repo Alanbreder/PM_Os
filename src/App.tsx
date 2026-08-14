@@ -16,14 +16,18 @@ import {
   Layers,
   Terminal,
   ListTodo,
+  Lightbulb,
 } from 'lucide-react';
-import { Research, Workspace, Problem } from './types';
+import { Research, Workspace, Problem, Opportunity } from './types';
 import { ResearchForm } from './components/ResearchForm';
 import { ResearchAnalysisReview } from './components/ResearchAnalysisReview';
 import { ResearchDetailView } from './components/ResearchDetailView';
 import { ProblemBacklogView } from './components/ProblemBacklogView';
 import { ProblemDetailView } from './components/ProblemDetailView';
 import { ProblemFormView } from './components/ProblemFormView';
+import { OpportunityBacklogView } from './components/OpportunityBacklogView';
+import { OpportunityDetailView } from './components/OpportunityDetailView';
+import { OpportunityFormView } from './components/OpportunityFormView';
 
 type AppView =
   | 'list'
@@ -33,6 +37,9 @@ type AppView =
   | 'problems_list'
   | 'problem_create'
   | 'problem_detail'
+  | 'opportunities_list'
+  | 'opportunity_create'
+  | 'opportunity_detail'
   | 'security_tests';
 
 export default function App() {
@@ -52,8 +59,15 @@ export default function App() {
   const [problemToEdit, setProblemToEdit] = useState<Problem | null>(null);
   const [initialEvidenceIdForProblem, setInitialEvidenceIdForProblem] = useState<string | null>(null);
 
+  // Opportunities list
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [loadingOpportunities, setLoadingOpportunities] = useState(true);
+  const [selectedOpportunityId, setSelectedOpportunityId] = useState<string | null>(null);
+  const [opportunityToEdit, setOpportunityToEdit] = useState<Opportunity | null>(null);
+  const [initialProblemIdForOpportunity, setInitialProblemIdForOpportunity] = useState<string | null>(null);
+
   // Navigation views
-  const [currentView, setCurrentView] = useState<AppView>('problems_list');
+  const [currentView, setCurrentView] = useState<AppView>('opportunities_list');
   const [selectedResearchId, setSelectedResearchId] = useState<string | null>(null);
 
   // Security tests state
@@ -69,6 +83,7 @@ export default function App() {
     if (activeWorkspaceId) {
       fetchResearches();
       fetchProblems();
+      fetchOpportunities();
     }
   }, [activeWorkspaceId]);
 
@@ -127,6 +142,25 @@ export default function App() {
     }
   };
 
+  const fetchOpportunities = async () => {
+    setLoadingOpportunities(true);
+    try {
+      const res = await fetch('/api/opportunities', {
+        headers: {
+          'x-workspace-id': activeWorkspaceId,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOpportunities(data.opportunities || []);
+      }
+    } catch (err) {
+      console.error('Erro ao listar oportunidades:', err);
+    } finally {
+      setLoadingOpportunities(false);
+    }
+  };
+
   const runSecurityTests = async () => {
     setRunningSecurityTests(true);
     try {
@@ -180,6 +214,30 @@ export default function App() {
     setCurrentView('problems_list');
   };
 
+  const handleStartCreateOpportunity = (initialProblemId?: string) => {
+    setOpportunityToEdit(null);
+    setInitialProblemIdForOpportunity(initialProblemId || null);
+    setCurrentView('opportunity_create');
+  };
+
+  const handleStartEditOpportunity = (opportunity: Opportunity) => {
+    setOpportunityToEdit(opportunity);
+    setInitialProblemIdForOpportunity(null);
+    setCurrentView('opportunity_create');
+  };
+
+  const handleOpportunitySaved = (savedOpportunity: Opportunity) => {
+    fetchOpportunities();
+    setSelectedOpportunityId(savedOpportunity.id);
+    setCurrentView('opportunity_detail');
+  };
+
+  const handleOpportunityDeleted = () => {
+    fetchOpportunities();
+    setSelectedOpportunityId(null);
+    setCurrentView('opportunities_list');
+  };
+
   const filteredResearches = researches.filter((r) =>
     r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.raw_content.toLowerCase().includes(searchTerm.toLowerCase())
@@ -198,21 +256,26 @@ export default function App() {
     currentView === 'problem_create' ||
     currentView === 'problem_detail';
 
+  const isOpportunityView =
+    currentView === 'opportunities_list' ||
+    currentView === 'opportunity_create' ||
+    currentView === 'opportunity_detail';
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans antialiased p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Top Navbar */}
         <header className="border-b border-neutral-800 pb-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-900/20">
-              <Layers className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-700 flex items-center justify-center shadow-lg shadow-amber-900/20">
+              <Lightbulb className="w-5 h-5 text-neutral-950" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-semibold px-2 py-0.5 rounded">
-                  Etapa 3 Operacional
+                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[11px] font-semibold px-2 py-0.5 rounded">
+                  Etapa 4 — Opportunity
                 </span>
-                <span className="text-neutral-500 text-xs font-mono">Backlog + Validação + Rastreabilidade</span>
+                <span className="text-neutral-500 text-xs font-mono">Opportunity Backlog + Rastreabilidade</span>
               </div>
               <h1 className="text-xl font-bold tracking-tight text-white mt-0.5">
                 Product OS <span className="text-neutral-500 font-normal text-sm">| Continuous Discovery</span>
@@ -225,10 +288,22 @@ export default function App() {
             {/* Primary Nav Switchers */}
             <div className="flex items-center bg-neutral-900 border border-neutral-800 rounded-lg p-1 text-xs">
               <button
+                onClick={() => setCurrentView('opportunities_list')}
+                className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                  isOpportunityView
+                    ? 'bg-neutral-800 text-amber-400 shadow-sm'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                <span>Opportunities</span>
+              </button>
+
+              <button
                 onClick={() => setCurrentView('problems_list')}
                 className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
                   isProblemView
-                    ? 'bg-neutral-800 text-white shadow-sm'
+                    ? 'bg-neutral-800 text-orange-400 shadow-sm'
                     : 'text-neutral-400 hover:text-white'
                 }`}
               >
@@ -240,7 +315,7 @@ export default function App() {
                 onClick={() => setCurrentView('list')}
                 className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
                   isDiscoveryView
-                    ? 'bg-neutral-800 text-white shadow-sm'
+                    ? 'bg-neutral-800 text-emerald-400 shadow-sm'
                     : 'text-neutral-400 hover:text-white'
                 }`}
               >
@@ -257,6 +332,7 @@ export default function App() {
                 value={activeWorkspaceId}
                 onChange={(e) => {
                   setActiveWorkspaceId(e.target.value);
+                  if (isOpportunityView) setCurrentView('opportunities_list');
                   if (isProblemView) setCurrentView('problems_list');
                   if (isDiscoveryView) setCurrentView('list');
                 }}
@@ -287,6 +363,66 @@ export default function App() {
             </button>
           </div>
         </header>
+
+        {/* ============================================================ */}
+        {/* OPPORTUNITY BACKLOG VIEWS (ETAPA 4) */}
+        {/* ============================================================ */}
+
+        {/* Opportunity View 1: List Opportunities */}
+        {currentView === 'opportunities_list' && (
+          <OpportunityBacklogView
+            opportunities={opportunities}
+            loading={loadingOpportunities}
+            onSelectOpportunity={(id) => {
+              setSelectedOpportunityId(id);
+              setCurrentView('opportunity_detail');
+            }}
+            onCreateNew={() => handleStartCreateOpportunity()}
+            onNavigateToProblem={(problemId) => {
+              setSelectedProblemId(problemId);
+              setCurrentView('problem_detail');
+            }}
+          />
+        )}
+
+        {/* Opportunity View 2: Opportunity Detail & Traceability Cascade */}
+        {currentView === 'opportunity_detail' && selectedOpportunityId && (
+          <OpportunityDetailView
+            opportunityId={selectedOpportunityId}
+            workspaceId={activeWorkspaceId}
+            onBack={() => {
+              fetchOpportunities();
+              setCurrentView('opportunities_list');
+            }}
+            onEdit={handleStartEditOpportunity}
+            onNavigateToProblem={(problemId) => {
+              setSelectedProblemId(problemId);
+              setCurrentView('problem_detail');
+            }}
+            onNavigateToResearch={(researchId) => {
+              setSelectedResearchId(researchId);
+              setCurrentView('detail');
+            }}
+            onOpportunityDeleted={handleOpportunityDeleted}
+          />
+        )}
+
+        {/* Opportunity View 3: Create or Edit Opportunity */}
+        {currentView === 'opportunity_create' && (
+          <OpportunityFormView
+            workspaceId={activeWorkspaceId}
+            opportunityToEdit={opportunityToEdit}
+            initialProblemId={initialProblemIdForOpportunity}
+            onBack={() => {
+              if (opportunityToEdit) {
+                setCurrentView('opportunity_detail');
+              } else {
+                setCurrentView('opportunities_list');
+              }
+            }}
+            onSaved={handleOpportunitySaved}
+          />
+        )}
 
         {/* ============================================================ */}
         {/* PROBLEM BACKLOG VIEWS (ETAPA 3) */}
@@ -324,6 +460,7 @@ export default function App() {
               setCurrentView('detail');
             }}
             onProblemDeleted={handleProblemDeleted}
+            onCreateOpportunityFromProblem={(problemId) => handleStartCreateOpportunity(problemId)}
           />
         )}
 

@@ -93,7 +93,7 @@ export const problemEvidences = pgTable('problem_evidences', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-// Opportunities (Oportunidades de solução e produto)
+// Opportunities (Áreas de oportunidade de valor / resultado)
 export const opportunities = pgTable('opportunities', {
   id: uuid('id').defaultRandom().primaryKey(),
   workspaceId: uuid('workspace_id')
@@ -101,8 +101,7 @@ export const opportunities = pgTable('opportunities', {
     .notNull(),
   title: text('title').notNull(),
   description: text('description').notNull(),
-  strategicValue: text('strategic_value').notNull().default('medium'), // 'transformational', 'high', 'medium', 'low'
-  status: text('status').notNull().default('discovery'), // 'discovery', 'solutioning', 'experimenting', 'in_roadmap', 'archived'
+  status: text('status').notNull().default('draft'), // 'draft', 'active', 'archived'
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

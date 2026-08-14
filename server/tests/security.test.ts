@@ -242,6 +242,104 @@ export async function runSecurityIsolationTests(): Promise<TestResult[]> {
     passed: crossDeleteBlocked,
   });
 
+  // Test N: Create Opportunity in wsA linking Problem from wsB -> Rejected
+  let crossOppCreateRejected = false;
+  try {
+    await dbStore.createOpportunity(
+      wsA.id,
+      {
+        title: 'Oportunidade Cross-Tenant Invasora',
+        description: 'Descrição da oportunidade de teste para isolamento de tenant',
+        status: 'draft',
+      },
+      [problemB.id] // problemB belongs to wsB!
+    );
+  } catch (err: any) {
+    crossOppCreateRejected = true;
+  }
+  results.push({
+    name: 'N) Tentativa de relacionar Problema de outro workspace ao criar Oportunidade',
+    expected: 'Rejeitado com erro de validação cross-tenant',
+    actual: crossOppCreateRejected ? 'Rejeitado com erro de validação cross-tenant' : 'Permitido indevidamente',
+    passed: crossOppCreateRejected,
+  });
+
+  // Test O: Create Opportunity in wsB, attempt IDOR fetch from wsA -> 404
+  const oppB = await dbStore.createOpportunity(
+    wsB.id,
+    {
+      title: 'Oportunidade do Workspace Beta',
+      description: 'Descrição restrita do Workspace Beta',
+      status: 'active',
+    },
+    [problemB.id]
+  );
+
+  const idorOppFetch = await dbStore.getOpportunityById(wsA.id, oppB.id);
+  results.push({
+    name: 'O) Usuário A tenta buscar Oportunidade do Workspace B por UUID (IDOR Guard)',
+    expected: '404 Não encontrado (null)',
+    actual: idorOppFetch === null ? '404 Não encontrado (null)' : 'Vazamento IDOR',
+    passed: idorOppFetch === null,
+  });
+
+  // Test P: Update Opportunity in wsA linking Problem from wsB -> Rejected
+  const oppA = await dbStore.createOpportunity(
+    wsA.id,
+    {
+      title: 'Oportunidade Valida Alpha',
+      description: 'Descrição da Oportunidade Alpha',
+      status: 'active',
+    },
+    [problemA.id]
+  );
+
+  let crossOppUpdateRejected = false;
+  try {
+    await dbStore.updateOpportunity(
+      wsA.id,
+      oppA.id,
+      { title: 'Oportunidade Alpha Atualizada' },
+      [problemB.id] // problemB belongs to wsB!
+    );
+  } catch (err: any) {
+    crossOppUpdateRejected = true;
+  }
+  results.push({
+    name: 'P) Tentativa de vincular Problema de outro workspace durante atualização de Oportunidade',
+    expected: 'Rejeitado com erro de validação cross-tenant',
+    actual: crossOppUpdateRejected ? 'Rejeitado com erro de validação cross-tenant' : 'Permitido indevidamente',
+    passed: crossOppUpdateRejected,
+  });
+
+  // Test Q: Delete Opportunity in wsB from wsA -> IDOR Blocked
+  let crossOppDeleteBlocked = false;
+  try {
+    await dbStore.deleteOpportunity(wsA.id, oppB.id); // oppB belongs to wsB!
+  } catch (err: any) {
+    crossOppDeleteBlocked = true;
+  }
+  results.push({
+    name: 'Q) Tentativa de exclusão de Oportunidade de outro workspace (IDOR Guard)',
+    expected: 'Bloqueado (Oportunidade não encontrada no workspace autenticado)',
+    actual: crossOppDeleteBlocked ? 'Bloqueado (Oportunidade não encontrada no workspace autenticado)' : 'Excluída indevidamente',
+    passed: crossOppDeleteBlocked,
+  });
+
+  // Test R: Link Problems endpoint cross-tenant validation
+  let crossLinkProblemsRejected = false;
+  try {
+    await dbStore.linkProblemsToOpportunity(wsA.id, oppA.id, [problemB.id]);
+  } catch (err: any) {
+    crossLinkProblemsRejected = true;
+  }
+  results.push({
+    name: 'R) Tentativa de vincular Problemas de outro workspace via endpoint de vincular problemas',
+    expected: 'Rejeitado com erro de validação cross-tenant',
+    actual: crossLinkProblemsRejected ? 'Rejeitado com erro de validação cross-tenant' : 'Permitido indevidamente',
+    passed: crossLinkProblemsRejected,
+  });
+
   // Cleanup test workspaces
   try {
     await db.delete(schema.workspaces).where(eq(schema.workspaces.id, wsA.id));
@@ -252,3 +350,25 @@ export async function runSecurityIsolationTests(): Promise<TestResult[]> {
 
   return results;
 }
+
+// Auto-run if executed directly via CLI
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('security.test.ts')) {
+  runSecurityIsolationTests()
+    .then((results) => {
+      console.log('\n=== SUÍTE DE TESTES DE SEGURANÇA E ISOLAMENTO MULTI-TENANT ===');
+      let allPassed = true;
+      for (const r of results) {
+        const icon = r.passed ? '✅' : '❌';
+        console.log(`${icon} ${r.name}: ${r.actual}`);
+        if (!r.passed) allPassed = false;
+      }
+      console.log(`\nResultado Total: ${results.filter((r) => r.passed).length}/${results.length} testes aprovados.`);
+      if (!allPassed) process.exit(1);
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('Falha na execução dos testes de segurança:', err);
+      process.exit(1);
+    });
+}
+

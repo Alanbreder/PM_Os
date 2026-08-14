@@ -68,15 +68,13 @@ export interface ProblemEvidence {
   created_at: string;
 }
 
-export type OpportunityValue = 'high' | 'medium' | 'low';
-export type OpportunityStatus = 'draft' | 'prioritized' | 'in_progress' | 'solved' | 'discarded';
+export type OpportunityStatus = 'draft' | 'active' | 'archived';
 
 export interface Opportunity {
   id: string;
   workspace_id: string;
   title: string;
   description: string;
-  strategic_value: OpportunityValue;
   status: OpportunityStatus;
   created_at: string;
   updated_at: string;

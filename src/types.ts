@@ -61,6 +61,19 @@ export interface Problem {
   updated_at?: string;
 }
 
+export type OpportunityStatus = 'draft' | 'active' | 'archived';
+
+export interface Opportunity {
+  id: string;
+  workspace_id: string;
+  title: string;
+  description: string;
+  status: OpportunityStatus;
+  problems?: Problem[];
+  created_at: string;
+  updated_at: string;
+}
+
 // AI Suggestions (Human-in-the-loop)
 export interface SuggestedEvidenceItem {
   id: string; // client temporary ID

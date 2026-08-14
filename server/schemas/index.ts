@@ -79,12 +79,16 @@ export const linkProblemEvidencesSchema = z.object({
 export const createOpportunitySchema = z.object({
   title: z.string().min(3, 'O título da oportunidade deve ter pelo menos 3 caracteres').max(200),
   description: z.string().min(10, 'A descrição da oportunidade deve ter pelo menos 10 caracteres'),
-  strategic_value: z.enum(['high', 'medium', 'low']).default('medium'),
-  status: z.enum(['draft', 'prioritized', 'in_progress', 'solved', 'discarded']).default('draft'),
+  status: z.enum(['draft', 'active', 'archived']).default('draft'),
   problem_ids: z.array(uuidSchema).default([]),
 });
 
-export const updateOpportunitySchema = createOpportunitySchema.omit({ problem_ids: true }).partial();
+export const updateOpportunitySchema = z.object({
+  title: z.string().min(3, 'O título da oportunidade deve ter pelo menos 3 caracteres').max(200).optional(),
+  description: z.string().min(10, 'A descrição da oportunidade deve ter pelo menos 10 caracteres').optional(),
+  status: z.enum(['draft', 'active', 'archived']).optional(),
+  problem_ids: z.array(uuidSchema).optional(),
+});
 
 export const linkOpportunityProblemsSchema = z.object({
   problem_ids: z.array(uuidSchema).min(1, 'Pelo menos um problema deve ser vinculado'),

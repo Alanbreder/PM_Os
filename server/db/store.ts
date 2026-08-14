@@ -5,6 +5,7 @@ import {
   Evidence,
   Problem,
   Opportunity,
+  OpportunityStatus,
   Hypothesis,
   WorkspaceRole,
 } from '../types/index.js';
@@ -570,60 +571,63 @@ class PostgresStore {
         throw new Error('Problema não encontrado neste workspace');
       }
 
-      // If evidenceIds provided, validate all belong to workspaceId
-      if (evidenceIds !== undefined) {
-        if (evidenceIds.length > 0) {
-          const validEvidences = await db
-            .select({ id: schema.evidences.id })
-            .from(schema.evidences)
+      // Execute update + evidence sync within a single atomic transaction
+      await db.transaction(async (tx) => {
+        // If evidenceIds provided, validate all belong to workspaceId
+        if (evidenceIds !== undefined) {
+          if (evidenceIds.length > 0) {
+            const validEvidences = await tx
+              .select({ id: schema.evidences.id })
+              .from(schema.evidences)
+              .where(
+                and(
+                  eq(schema.evidences.workspaceId, workspaceId),
+                  inArray(schema.evidences.id, evidenceIds)
+                )
+              );
+
+            if (validEvidences.length !== evidenceIds.length) {
+              throw new Error('Uma ou mais evidências selecionadas não pertencem a este workspace.');
+            }
+          }
+
+          // Replace junction rows for this problem in workspace atomically
+          await tx
+            .delete(schema.problemEvidences)
             .where(
               and(
-                eq(schema.evidences.workspaceId, workspaceId),
-                inArray(schema.evidences.id, evidenceIds)
+                eq(schema.problemEvidences.workspaceId, workspaceId),
+                eq(schema.problemEvidences.problemId, id)
               )
             );
 
-          if (validEvidences.length !== evidenceIds.length) {
-            throw new Error('Uma ou mais evidências selecionadas não pertencem a este workspace.');
+          for (const evId of evidenceIds) {
+            await tx.insert(schema.problemEvidences).values({
+              workspaceId,
+              problemId: id,
+              evidenceId: evId,
+            });
           }
         }
 
-        // Replace junction rows for this problem in workspace
-        await db
-          .delete(schema.problemEvidences)
+        const updateValues: Record<string, any> = {
+          updatedAt: new Date(),
+        };
+        if (data.title !== undefined) updateValues.title = data.title;
+        if (data.description !== undefined) updateValues.description = data.description;
+        if (data.impact_level !== undefined) updateValues.impactLevel = data.impact_level;
+        if (data.status !== undefined) updateValues.status = data.status;
+
+        await tx
+          .update(schema.problems)
+          .set(updateValues)
           .where(
             and(
-              eq(schema.problemEvidences.workspaceId, workspaceId),
-              eq(schema.problemEvidences.problemId, id)
+              eq(schema.problems.id, id),
+              eq(schema.problems.workspaceId, workspaceId)
             )
           );
-
-        for (const evId of evidenceIds) {
-          await db.insert(schema.problemEvidences).values({
-            workspaceId,
-            problemId: id,
-            evidenceId: evId,
-          });
-        }
-      }
-
-      const updateValues: Record<string, any> = {
-        updatedAt: new Date(),
-      };
-      if (data.title !== undefined) updateValues.title = data.title;
-      if (data.description !== undefined) updateValues.description = data.description;
-      if (data.impact_level !== undefined) updateValues.impactLevel = data.impact_level;
-      if (data.status !== undefined) updateValues.status = data.status;
-
-      await db
-        .update(schema.problems)
-        .set(updateValues)
-        .where(
-          and(
-            eq(schema.problems.id, id),
-            eq(schema.problems.workspaceId, workspaceId)
-          )
-        );
+      });
 
       const updated = await this.getProblemById(workspaceId, id);
       if (!updated) {
@@ -643,23 +647,26 @@ class PostgresStore {
         throw new Error('Problema não encontrado neste workspace');
       }
 
-      await db
-        .delete(schema.problemEvidences)
-        .where(
-          and(
-            eq(schema.problemEvidences.workspaceId, workspaceId),
-            eq(schema.problemEvidences.problemId, id)
-          )
-        );
+      // Execute junction rows deletion + problem deletion within a single atomic transaction
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(schema.problemEvidences)
+          .where(
+            and(
+              eq(schema.problemEvidences.workspaceId, workspaceId),
+              eq(schema.problemEvidences.problemId, id)
+            )
+          );
 
-      await db
-        .delete(schema.problems)
-        .where(
-          and(
-            eq(schema.problems.id, id),
-            eq(schema.problems.workspaceId, workspaceId)
-          )
-        );
+        await tx
+          .delete(schema.problems)
+          .where(
+            and(
+              eq(schema.problems.id, id),
+              eq(schema.problems.workspaceId, workspaceId)
+            )
+          );
+      });
 
       return true;
     } catch (err: any) {
@@ -754,8 +761,6 @@ class PostgresStore {
       const allProblems = await this.listProblems(workspaceId);
       const problemMap = new Map(allProblems.map((p) => [p.id, p]));
 
-      const allHypotheses = await this.listHypotheses(workspaceId);
-
       return oppRows.map((o) => {
         const linkedProblemIds = opRows
           .filter((op) => op.opportunityId === o.id)
@@ -765,17 +770,13 @@ class PostgresStore {
           .map((pid) => problemMap.get(pid))
           .filter(Boolean) as Problem[];
 
-        const attachedHypotheses = allHypotheses.filter((h) => h.opportunity_id === o.id);
-
         return {
           id: o.id,
           workspace_id: o.workspaceId,
           title: o.title,
           description: o.description,
-          strategic_value: o.strategicValue as any,
           status: o.status as any,
           problems: attachedProblems,
-          hypotheses: attachedHypotheses,
           created_at: o.createdAt.toISOString(),
           updated_at: o.updatedAt.toISOString(),
         };
@@ -819,17 +820,13 @@ class PostgresStore {
         attachedProblems = allProblems.filter((p) => problemIds.includes(p.id));
       }
 
-      const hypotheses = await this.listHypotheses(workspaceId, id);
-
       return {
         id: o.id,
         workspace_id: o.workspaceId,
         title: o.title,
         description: o.description,
-        strategic_value: o.strategicValue as any,
         status: o.status as any,
         problems: attachedProblems,
-        hypotheses,
         created_at: o.createdAt.toISOString(),
         updated_at: o.updatedAt.toISOString(),
       };
@@ -841,58 +838,165 @@ class PostgresStore {
 
   async createOpportunity(
     workspaceId: string,
-    data: Omit<Opportunity, 'id' | 'workspace_id' | 'created_at' | 'updated_at'>,
+    data: { title: string; description: string; status?: OpportunityStatus },
     problemIds: string[] = []
   ): Promise<Opportunity> {
     try {
-      // Cross-tenant check for linked problems
-      if (problemIds.length > 0) {
-        const validProblems = await db
-          .select({ id: schema.problems.id })
-          .from(schema.problems)
+      const createdId = await db.transaction(async (tx) => {
+        // Cross-tenant check for linked problems
+        if (problemIds.length > 0) {
+          const validProblems = await tx
+            .select({ id: schema.problems.id })
+            .from(schema.problems)
+            .where(
+              and(
+                eq(schema.problems.workspaceId, workspaceId),
+                inArray(schema.problems.id, problemIds)
+              )
+            );
+
+          if (validProblems.length !== problemIds.length) {
+            throw new Error('Um ou mais problemas informados pertencem a outro workspace.');
+          }
+        }
+
+        const [o] = await tx
+          .insert(schema.opportunities)
+          .values({
+            workspaceId,
+            title: data.title,
+            description: data.description,
+            status: data.status || 'draft',
+          })
+          .returning();
+
+        for (const problemId of problemIds) {
+          await tx.insert(schema.opportunityProblems).values({
+            workspaceId,
+            opportunityId: o.id,
+            problemId,
+          });
+        }
+
+        return o.id;
+      });
+
+      const opt = await this.getOpportunityById(workspaceId, createdId);
+      return opt!;
+    } catch (err: any) {
+      console.error('Postgres createOpportunity error:', err);
+      throw err;
+    }
+  }
+
+  async updateOpportunity(
+    workspaceId: string,
+    id: string,
+    data: { title?: string; description?: string; status?: OpportunityStatus },
+    problemIds?: string[]
+  ): Promise<Opportunity> {
+    try {
+      const opp = await this.getOpportunityById(workspaceId, id);
+      if (!opp) {
+        throw new Error('Oportunidade não encontrada neste workspace');
+      }
+
+      await db.transaction(async (tx) => {
+        if (problemIds !== undefined) {
+          if (problemIds.length > 0) {
+            const validProblems = await tx
+              .select({ id: schema.problems.id })
+              .from(schema.problems)
+              .where(
+                and(
+                  eq(schema.problems.workspaceId, workspaceId),
+                  inArray(schema.problems.id, problemIds)
+                )
+              );
+
+            if (validProblems.length !== problemIds.length) {
+              throw new Error('Um ou mais problemas informados pertencem a outro workspace.');
+            }
+          }
+
+          // Delete existing junction rows for this opportunity in workspace
+          await tx
+            .delete(schema.opportunityProblems)
+            .where(
+              and(
+                eq(schema.opportunityProblems.workspaceId, workspaceId),
+                eq(schema.opportunityProblems.opportunityId, id)
+              )
+            );
+
+          for (const pid of problemIds) {
+            await tx.insert(schema.opportunityProblems).values({
+              workspaceId,
+              opportunityId: id,
+              problemId: pid,
+            });
+          }
+        }
+
+        const updateValues: Record<string, any> = {
+          updatedAt: new Date(),
+        };
+        if (data.title !== undefined) updateValues.title = data.title;
+        if (data.description !== undefined) updateValues.description = data.description;
+        if (data.status !== undefined) updateValues.status = data.status;
+
+        await tx
+          .update(schema.opportunities)
+          .set(updateValues)
           .where(
             and(
-              eq(schema.problems.workspaceId, workspaceId),
-              inArray(schema.problems.id, problemIds)
+              eq(schema.opportunities.id, id),
+              eq(schema.opportunities.workspaceId, workspaceId)
+            )
+          );
+      });
+
+      const updated = await this.getOpportunityById(workspaceId, id);
+      if (!updated) {
+        throw new Error('Oportunidade não encontrada após atualização');
+      }
+      return updated;
+    } catch (err: any) {
+      console.error('Postgres updateOpportunity error:', err);
+      throw err;
+    }
+  }
+
+  async deleteOpportunity(workspaceId: string, id: string): Promise<boolean> {
+    try {
+      const opp = await this.getOpportunityById(workspaceId, id);
+      if (!opp) {
+        throw new Error('Oportunidade não encontrada neste workspace');
+      }
+
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(schema.opportunityProblems)
+          .where(
+            and(
+              eq(schema.opportunityProblems.workspaceId, workspaceId),
+              eq(schema.opportunityProblems.opportunityId, id)
             )
           );
 
-        if (validProblems.length !== problemIds.length) {
-          throw new Error('Um ou mais problemas informados pertencem a outro workspace.');
-        }
-      }
+        await tx
+          .delete(schema.opportunities)
+          .where(
+            and(
+              eq(schema.opportunities.id, id),
+              eq(schema.opportunities.workspaceId, workspaceId)
+            )
+          );
+      });
 
-      const [o] = await db
-        .insert(schema.opportunities)
-        .values({
-          workspaceId,
-          title: data.title,
-          description: data.description,
-          strategicValue: data.strategic_value || 'medium',
-          status: data.status || 'discovery',
-        })
-        .returning();
-
-      for (const problemId of problemIds) {
-        await db.insert(schema.opportunityProblems).values({
-          workspaceId,
-          opportunityId: o.id,
-          problemId,
-        });
-      }
-
-      return {
-        id: o.id,
-        workspace_id: o.workspaceId,
-        title: o.title,
-        description: o.description,
-        strategic_value: o.strategicValue as any,
-        status: o.status as any,
-        created_at: o.createdAt.toISOString(),
-        updated_at: o.updatedAt.toISOString(),
-      };
+      return true;
     } catch (err: any) {
-      console.error('Postgres createOpportunity error:', err);
+      console.error('Postgres deleteOpportunity error:', err);
       throw err;
     }
   }
@@ -904,38 +1008,64 @@ class PostgresStore {
         throw new Error('Oportunidade não encontrada neste workspace');
       }
 
-      if (problemIds.length > 0) {
-        const validProblems = await db
-          .select({ id: schema.problems.id })
-          .from(schema.problems)
-          .where(
-            and(
-              eq(schema.problems.workspaceId, workspaceId),
-              inArray(schema.problems.id, problemIds)
-            )
-          );
+      return await db.transaction(async (tx) => {
+        if (problemIds.length > 0) {
+          const validProblems = await tx
+            .select({ id: schema.problems.id })
+            .from(schema.problems)
+            .where(
+              and(
+                eq(schema.problems.workspaceId, workspaceId),
+                inArray(schema.problems.id, problemIds)
+              )
+            );
 
-        if (validProblems.length !== problemIds.length) {
-          throw new Error('Um ou mais problemas informados pertencem a outro workspace.');
+          if (validProblems.length !== problemIds.length) {
+            throw new Error('Um ou mais problemas informados pertencem a outro workspace.');
+          }
         }
-      }
 
-      const links = [];
-      for (const problemId of problemIds) {
-        const [link] = await db
-          .insert(schema.opportunityProblems)
-          .values({
-            workspaceId,
-            opportunityId,
-            problemId,
-          })
-          .onConflictDoNothing()
-          .returning();
-        if (link) links.push(link);
-      }
-      return links;
+        const links = [];
+        for (const problemId of problemIds) {
+          const [link] = await tx
+            .insert(schema.opportunityProblems)
+            .values({
+              workspaceId,
+              opportunityId,
+              problemId,
+            })
+            .onConflictDoNothing()
+            .returning();
+          if (link) links.push(link);
+        }
+        return links;
+      });
     } catch (err: any) {
       console.error('Postgres linkProblemsToOpportunity error:', err);
+      throw err;
+    }
+  }
+
+  async unlinkProblemFromOpportunity(workspaceId: string, opportunityId: string, problemId: string): Promise<boolean> {
+    try {
+      const opp = await this.getOpportunityById(workspaceId, opportunityId);
+      if (!opp) {
+        throw new Error('Oportunidade não encontrada neste workspace');
+      }
+
+      await db
+        .delete(schema.opportunityProblems)
+        .where(
+          and(
+            eq(schema.opportunityProblems.workspaceId, workspaceId),
+            eq(schema.opportunityProblems.opportunityId, opportunityId),
+            eq(schema.opportunityProblems.problemId, problemId)
+          )
+        );
+
+      return true;
+    } catch (err: any) {
+      console.error('Postgres unlinkProblemFromOpportunity error:', err);
       throw err;
     }
   }
